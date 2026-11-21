@@ -55,7 +55,7 @@ G1 and G2 are settled as follows.
 |---|----------|--------|-------|
 | D1 | Runtime | .NET 10 (current LTS), self-contained publish | No runtime to install on the server. |
 | D2 | Process shape | One process: Windows service hosting Kestrel, Blazor Server and the background workers | `/src/Service` and `/src/Admin` are separate projects in one host. |
-| D3 | Installer | **Decided: the full installer the spec describes**, as a WiX bundle with a custom setup UI | Version 1 ships the whole spec. Built in two passes: folders, account, share, certificates and service in M1; the Modules step in M4. |
+| D3 | Installer | **Changed:** our own setup program, `ScanRelaySetup.exe`, not a WiX bundle and MSI | It does everything the spec's installer does, registers under Windows Installed apps with Modify and Uninstall, and has a silent mode so it can be tested on a build machine on every change. A WiX bundle would have added a second engine to debug blind, for a label. It is not a "standard Windows installer package" in the MSI sense; see the overnight log. |
 | D4 | Database | SQLite through EF Core, migrations run at start | Backup before upgrade is a file copy. |
 | D5 | Secrets at rest | Windows DPAPI, machine scope, with the data folder's rights as the second layer | Covers printer admin sign-ins and the printer account password. |
 | D6 | Graph | **Changed:** plain HTTP calls to Graph through our own small client, app-only with certificate. No Graph SDK and no Microsoft sign-in library. | It lets the real sign-in and Graph code run in tests against a mock that checks the certificate signature, consent and upload rules. |
