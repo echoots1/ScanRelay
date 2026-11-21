@@ -1,0 +1,187 @@
+@page "/settings"
+@attribute [Authorize(Policy = Roles.Admin)]
+@inherits PageBase
+@inject SettingsStore Store
+@inject ICloud Cloud
+@inject HealthCheck Health
+@inject AppRegistration Registration
+@inject InstallConfig Install
+@inject AuditLog Audit
+
+<PageTitle>Settings · ScanRelay</PageTitle>
+<h1>Settings</h1>
+<p class="lead">Every setting is changed here and stored in the database. Folder locations, the share, the port, the web certificate and the printer account are changed by running the installer, because those need administrator rights.</p>
+<Messages Notice="@Notice" Error="@Error" />
+
+@if (_s is not null)
+{
+    <h2>Entra connection</h2>
+    <div class="panel">
+        @if (string.IsNullOrEmpty(_s.TenantId))
+        {
+            <p>Not connected yet.</p>
+        }
+        else
+        {
+            <dl class="kv">
+                <dt>Tenant ID</dt><dd><span class="code">@_s.TenantId</span></dd>
+                <dt>Application (client) ID</dt><dd><span class="code">@_s.ClientId</span></dd>
+                <dt>Admin screen address</dt><dd><span class="code">@Install.Url</span></dd>
+            </dl>
+            <p class="hint">If the health check says permissions are not approved, someone with the Privileged Role Administrator or Global Administrator role opens this link:
+                <a href="@Registration.AdminConsentUrl(_s.TenantId, _s.ClientId!)" target="_blank" rel="noopener">approve permissions</a>.</p>
+        }
+        <div class="toolbar">
+            <a class="button" href="/setup?step=entra">@(string.IsNullOrEmpty(_s.TenantId) ? "Connect to Entra" : "Run the Entra setup again")</a>
+            <button disabled="@Busy" @onclick="RunHealthAsync">Run the health check</button>
+        </div>
+        <p class="hint">Running the Entra setup again is safe. It finds the existing registration and repairs it.</p>
+        @if (_health is not null)
+        {
+            <ul class="plain">
+                @foreach (var item in _health)
+                {
+                    var b = Badge.For(item.State);
+                    <li><Badge Text="@b.Text" Kind="@b.Kind" /><strong>@item.Name</strong><span class="wrap">@item.Detail</span></li>
+                }
+            </ul>
+        }
+    </div>
+
+    <h2>Who can open the admin screen</h2>
+    <div class="panel">
+        <GroupPicker Label="Admin group" GroupId="_s.AdminGroupId" GroupName="@_s.AdminGroupName"
+                     Hint="Members can do everything here and receive the alert emails."
+                     Changed="g => SetAdminGroupAsync(g)" />
+        <GroupPicker Label="Helpdesk group (optional)" AllowNone="true" GroupId="_s.HelpdeskGroupId" GroupName="@_s.HelpdeskGroupName"
+                     Hint="Members can view jobs and runs, and re-run them. Nothing else."
+                     Changed="g => { _s = _s with { HelpdeskGroupId = g?.Id, HelpdeskGroupName = g?.DisplayName }; }" />
+    </div>
+
+    <h2>Who can scan</h2>
+    <div class="panel">
+        <GroupPicker Label="Default sync group" GroupId="_s.DefaultSyncGroupId" GroupName="@_s.DefaultSyncGroupName"
+                     Hint="Everyone who can scan. Members of groups inside it count too."
+                     Changed="g => { if (g is not null) _s = _s with { DefaultSyncGroupId = g.Id, DefaultSyncGroupName = g.DisplayName }; }" />
+        <div class="field"><label for="s-interval">Sync interval, in minutes</label>
+            <input id="s-interval" type="number" min="5" max="1440" value="@_s.SyncIntervalMinutes" @onchange="e => _s = _s with { SyncIntervalMinutes = Int(e, _s.SyncIntervalMinutes) }" /></div>
+        <div class="field"><label for="s-guard">Change guard limit</label>
+            <input id="s-guard" type="number" min="0" max="10000" value="@_s.ChangeGuardLimit" @onchange="e => _s = _s with { ChangeGuardLimit = Int(e, _s.ChangeGuardLimit) }" />
+            <div class="hint">A sync that would remove more entries than this stops and waits for an Admin to approve it on the Runs page.</div></div>
+        <label class="check"><input type="checkbox" checked="@_s.IncludeGuests" @onchange="e => _s = _s with { IncludeGuests = (bool)e.Value! }" /> Include guest accounts</label>
+    </div>
+
+    <h2>Where scans go</h2>
+    <div class="panel">
+        <div class="field"><label for="s-folder">OneDrive folder</label>
+            <input id="s-folder" type="text" value="@_s.OneDriveFolder" @onchange="e => _s = _s with { OneDriveFolder = Text(e) }" />
+            <div class="hint">A path that starts with Documents goes under each person's own Documents folder, whatever it is called in their language. The last folder is created if it is missing.</div></div>
+        <div class="field"><label for="s-template">File name template</label>
+            <input id="s-template" type="text" value="@_s.FileNameTemplate" @onchange="e => _s = _s with { FileNameTemplate = Text(e) }" />
+            <div class="hint">The part in braces is a date and time format. Example now: <span class="code">@Example()</span>. A name clash gets a numbered suffix.</div></div>
+        <div class="field"><label for="s-types">Allowed file types</label>
+            <input id="s-types" type="text" value="@_s.AllowedFileTypes" @onchange="e => _s = _s with { AllowedFileTypes = Text(e) }" />
+            <div class="hint">Separated by commas, such as <span class="code">pdf, tif</span>. Anything else fails.</div></div>
+    </div>
+
+    <h2>Retention</h2>
+    <div class="panel">
+        <div class="field"><label for="s-files">Keep processed files for, in days</label>
+            <input id="s-files" type="number" min="1" max="365" value="@_s.FileRetentionDays" @onchange="e => _s = _s with { FileRetentionDays = Int(e, _s.FileRetentionDays) }" />
+            <div class="hint">Uploaded and failed alike. A failed job can be re-run while its file is kept.</div></div>
+        <div class="field"><label for="s-history">Keep job records for, in days</label>
+            <input id="s-history" type="number" min="1" max="3650" value="@_s.JobHistoryDays" @onchange="e => _s = _s with { JobHistoryDays = Int(e, _s.JobHistoryDays) }" /></div>
+    </div>
+
+    <h2>Alerts and updates</h2>
+    <div class="panel">
+        <div class="field"><label for="s-sender">Alert sender</label>
+            <input id="s-sender" type="text" value="@_s.AlertSender" @onchange="e => _s = _s with { AlertSender = Text(e) is { Length: > 0 } v ? v : null }" placeholder="alerts@your-organisation.example" />
+            <div class="hint">The mailbox alert emails are sent from. They go to the members of the admin group. Leave empty to send none.</div></div>
+        <div class="banner info small">
+            <strong>Limit what the app can send as.</strong> The Mail.Send permission lets the app send as any mailbox unless Exchange Online limits it. To limit it to the sender mailbox, an Exchange administrator puts that mailbox in a mail-enabled security group and runs, in Exchange Online PowerShell:
+            <pre class="code">New-ApplicationAccessPolicy -AppId @(_s.ClientId ?? "APPLICATION-ID") -PolicyScopeGroupId GROUP-ADDRESS -AccessRight RestrictAccess -Description "ScanRelay alert sender only"</pre>
+            The app works either way and cannot see from here whether the limit is in place.
+        </div>
+        <label class="check"><input type="checkbox" checked="@_s.UpdateCheck" @onchange="e => _s = _s with { UpdateCheck = (bool)e.Value! }" />
+            Check GitHub once a day for new app and module versions</label>
+        <div class="hint">The app tells the admins and explains what to do. It never updates itself. Turn this off for a server with no internet access.</div>
+        <div class="toolbar" style="margin-top:12px"><button disabled="@(Busy || string.IsNullOrWhiteSpace(_s.AlertSender))" @onclick="TestEmailAsync">Save and send a test email</button></div>
+    </div>
+
+    <div class="toolbar">
+        <button class="primary" disabled="@Busy" @onclick="SaveAsync">Save settings</button>
+        <button disabled="@Busy" @onclick="() => DoAsync(() => Task.CompletedTask)">Undo changes</button>
+    </div>
+
+    <h2>Export and import</h2>
+    <div class="panel">
+        <p>One JSON file with every setting, for backup or for moving to another server. Secrets are left out.</p>
+        <div class="toolbar">
+            <a class="button" href="/files/settings-export">Export settings</a>
+            <label class="button">Import settings<InputFile OnChange="ImportAsync" accept=".json" style="display:none" /></label>
+        </div>
+    </div>
+}
+
+@code {
+    private AppSettings? _s;
+    private IReadOnlyList<HealthItem>? _health;
+
+    protected override async Task LoadAsync() => _s = await Store.GetAsync();
+
+    private static int Int(ChangeEventArgs e, int fallback) => int.TryParse(e.Value?.ToString(), out var v) ? v : fallback;
+
+    private static string Text(ChangeEventArgs e) => e.Value?.ToString()?.Trim() ?? "";
+
+    private string Example()
+    {
+        try
+        {
+            return FileNaming.Render(_s!.FileNameTemplate, Clock.GetLocalNow().DateTime) + ".pdf";
+        }
+        catch (FormatException)
+        {
+            return "(not a valid template)";
+        }
+    }
+
+    private Task SetAdminGroupAsync(DirectoryGroup? group) => DoAsync(async () =>
+    {
+        if (group is null) return null;
+
+        // Changing the admin group to one you are not in would lock you out.
+        if (Actor.Id is { } me && !await Cloud.IsMemberAsync(me, group.Id))
+        {
+            return $"You are not a member of {group.DisplayName}. Choosing it would lock you out, so it was not changed.";
+        }
+
+        var pending = _s!;
+        await Store.SaveAsync(pending with { AdminGroupId = group.Id, AdminGroupName = group.DisplayName }, Actor);
+        return null;
+    }, "The admin group was changed and saved.");
+
+    private Task SaveAsync() => DoAsync(() => Store.SaveAsync(_s!, Actor), "Settings saved.");
+
+    private Task RunHealthAsync() => DoAsync(async () => { _health = await Health.RunAsync(); });
+
+    private Task TestEmailAsync() => DoAsync(async () =>
+    {
+        await Store.SaveAsync(_s!, Actor);
+        var s = await Store.GetAsync();
+        if (s.AdminGroupId is not { } group) return "Choose the admin group first. Alert emails go to its members.";
+        var to = (await Cloud.GetGroupMembersAsync(group)).Where(u => u.Enabled).Select(u => u.UserPrincipalName).ToList();
+        if (to.Count == 0) return "The admin group has no members to send to.";
+        await Cloud.SendMailAsync(s.AlertSender!, to, "ScanRelay: test email", "This is a test email from ScanRelay. Alert emails will look like this and come from this mailbox.");
+        await Audit.WriteAsync(Actor, "Test email sent", s.AlertSender);
+        return null;
+    }, "Saved, and a test email was sent to the admin group.");
+
+    private Task ImportAsync(InputFileChangeEventArgs e) => DoAsync(async () =>
+    {
+        if (e.File.Size > 200_000) return "That file is too large to be a settings export.";
+        using var reader = new StreamReader(e.File.OpenReadStream(200_000));
+        await Store.ImportAsync(await reader.ReadToEndAsync(), Actor);
+        return null;
+    }, "Settings imported. Secrets are not part of an export, so printer sign-ins must be typed in again on a new server.");
+}

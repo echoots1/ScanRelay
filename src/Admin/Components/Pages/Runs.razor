@@ -1,0 +1,170 @@
+@page "/runs"
+@inherits PageBase
+@inject DirectorySync Sync
+
+<PageTitle>Runs · ScanRelay</PageTitle>
+<h1>Runs</h1>
+<p class="lead">Every sync run and every push to a printer. A sync reads the groups, then hands each printer that differs its full list.</p>
+<Messages Notice="@Notice" Error="@Error" />
+
+@if (IsAdmin)
+{
+    <div class="toolbar">
+        <button class="primary" disabled="@(Busy || Sync.IsRunning)" @onclick="SyncNowAsync">Sync now</button>
+        <button disabled="@(Busy || Sync.IsRunning)" @onclick="PreviewAsync">Preview a sync</button>
+        @if (Sync.IsRunning) { <span class="muted">A run is in progress…</span> }
+    </div>
+}
+
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>Started</th><th>Kind</th><th>Status</th><th>People</th><th>Result</th><th></th></tr></thead>
+        <tbody>
+            @if (_runs.Count == 0)
+            {
+                <tr><td colspan="6" class="muted">No runs yet.</td></tr>
+            }
+            @foreach (var run in _runs)
+            {
+                var b = Badge.For(run.Status);
+                var (message, changes) = DirectorySync.ReadDetail(run.Detail);
+                var open = _open.Contains(run.Id) || run.Status == RunStatus.Held;
+                <tr>
+                    <td class="nowrap">@Fmt.Time(run.StartedUtc)</td>
+                    <td>@(run.Kind switch { RunKind.Preview => "Preview", RunKind.DriftCheck => "Drift check", _ => "Sync" })
+                        <div class="muted small">@(run.Trigger == RunTrigger.Schedule ? "Scheduled" : run.Actor)</div></td>
+                    <td><Badge Text="@b.Text" Kind="@b.Kind" /></td>
+                    <td class="nowrap">+@run.PeopleAdded / −@run.PeopleRemoved</td>
+                    <td class="wrap">@message
+                        @if (run.Pushes.Count > 0)
+                        {
+                            <div class="muted small">@run.Pushes.Count(p => p.Status == PushStatus.Succeeded) of @run.Pushes.Count push(es) succeeded</div>
+                        }
+                    </td>
+                    <td class="actions">
+                        @if (run.Status == RunStatus.Held && IsAdmin)
+                        {
+                            <button class="small primary" disabled="@Busy" @onclick="() => ApproveAsync(run.Id)">Approve</button>
+                            <button class="small" disabled="@Busy" @onclick="() => CancelAsync(run.Id)">Cancel</button>
+                        }
+                        @if (run.Status != RunStatus.Held)
+                        {
+                            <button class="small" @onclick="() => Toggle(run.Id)" aria-expanded="@open">@(open ? "Hide" : "Details")</button>
+                        }
+                    </td>
+                </tr>
+                @if (open)
+                {
+                    <tr class="detail">
+                        <td colspan="6">
+                            @if (changes is not null)
+                            {
+                                <div class="cols">
+                                    <div><h3>People added (@changes.AddPeople.Count)</h3><div class="wrap">@Names(changes.AddPeople)</div></div>
+                                    <div><h3>People removed (@changes.RemovePeople.Count)</h3><div class="wrap">@Names(changes.RemovePeople)</div></div>
+                                    @if (changes.Skipped.Count > 0)
+                                    {
+                                        <div><h3>Skipped (@changes.Skipped.Count)</h3><div class="wrap">@Names(changes.Skipped)</div></div>
+                                    }
+                                </div>
+                                @foreach (var pc in changes.Printers.Where(p => p.Differs))
+                                {
+                                    <h3>@pc.Name: @pc.Total entries wanted</h3>
+                                    <div class="small wrap">
+                                        @if (pc.Add.Count > 0) { <div><strong>Add:</strong> @Names(pc.Add)</div> }
+                                        @if (pc.Remove.Count > 0) { <div><strong>Remove:</strong> @Names(pc.Remove)</div> }
+                                        @if (pc.Rename.Count > 0) { <div><strong>Rename to:</strong> @Names(pc.Rename)</div> }
+                                    </div>
+                                }
+                            }
+                            @if (run.Pushes.Count > 0)
+                            {
+                                <h3>Pushes</h3>
+                                <table>
+                                    <thead><tr><th>Printer</th><th>Status</th><th>Added</th><th>Updated</th><th>Removed</th><th>Error</th><th></th></tr></thead>
+                                    <tbody>
+                                        @foreach (var push in run.Pushes.OrderBy(p => p.StartedUtc))
+                                        {
+                                            var pb = Badge.For(push.Status);
+                                            <tr>
+                                                <td>@push.Printer.Name</td>
+                                                <td><Badge Text="@pb.Text" Kind="@pb.Kind" /></td>
+                                                <td>@push.Added</td><td>@push.Updated</td><td>@push.Removed</td>
+                                                <td class="wrap">@push.Error</td>
+                                                <td class="actions">
+                                                    @if (push.Status is PushStatus.Failed or PushStatus.Paused)
+                                                    {
+                                                        <button class="small" disabled="@Busy" @onclick="() => RepushAsync(push.PrinterId)">Re-run</button>
+                                                        @if (IsAdmin)
+                                                        {
+                                                            <a class="button small" href="/files/printer/@push.PrinterId/import">Import file</a>
+                                                        }
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                            @if (changes is null && run.Pushes.Count == 0) { <span class="muted">Nothing more to show.</span> }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<Run> _runs = [];
+    private readonly HashSet<int> _open = [];
+
+    protected override TimeSpan? RefreshEvery => TimeSpan.FromSeconds(5);
+
+    protected override async Task LoadAsync()
+    {
+        await using var db = await Db.CreateDbContextAsync();
+        _runs = await db.Runs.AsNoTracking().Include(r => r.Pushes).ThenInclude(p => p.Printer)
+            .OrderByDescending(r => r.StartedUtc).Take(100).AsSplitQuery().ToListAsync();
+    }
+
+    private static string Names(List<string> names) =>
+        names.Count == 0 ? "None" : string.Join(", ", names.Take(200)) + (names.Count > 200 ? $" …and {names.Count - 200} more" : "");
+
+    private void Toggle(int id)
+    {
+        if (!_open.Remove(id)) _open.Add(id);
+    }
+
+    private Task SyncNowAsync() => DoAsync(
+        async () =>
+        {
+            _open.Add(await Sync.RunAsync(RunKind.Sync, RunTrigger.Manual, Actor));
+        },
+        "The sync has finished. Its result is at the top of the list.");
+
+    private Task PreviewAsync() => DoAsync(
+        async () =>
+        {
+            _open.Add(await Sync.RunAsync(RunKind.Preview, RunTrigger.Manual, Actor));
+        },
+        "This is what a sync would change. Nothing was changed.");
+
+    private Task ApproveAsync(int id) => DoAsync(
+        async () =>
+        {
+            var problem = await Sync.ApproveAsync(id, Actor);
+            if (problem is null) _open.Add(id);
+            return problem;
+        },
+        "The run was approved and has been applied.");
+
+    private Task CancelAsync(int id) => DoAsync(() => Sync.CancelAsync(id, Actor), "The run was cancelled. Nothing was changed.");
+
+    private Task RepushAsync(int printerId) => DoAsync(
+        async () =>
+        {
+            _open.Add(await Sync.PushPrinterAsync(printerId, Actor));
+        },
+        "The push was run again. Its result is at the top of the list.");
+}

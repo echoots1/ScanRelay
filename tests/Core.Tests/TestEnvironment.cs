@@ -51,7 +51,7 @@ public sealed class TestEnvironment : IAsyncDisposable
     public static InstallConfig NewInstallConfig(MockCloudServer cloud, DataFolder data) => new()
     {
         DataFolder = data.Root,
-        Url = "https://localhost:8443",
+        Url = "https://scanserver.example:8443",
         PrinterAccount = "scanrelay-printer",
         ShareName = "Scans$",
         ServerName = "scanserver",

@@ -1,0 +1,153 @@
+@page "/"
+@inherits PageBase
+@inject SettingsStore Settings
+@inject JobPipeline Pipeline
+@inject UpdateChecker Updates
+
+<PageTitle>Dashboard · ScanRelay</PageTitle>
+<h1>Dashboard</h1>
+<p class="lead">Scans waiting, failures in the last day, the last sync, and the state of each printer.</p>
+<Messages Notice="@Notice" Error="@Error" />
+
+@if (_update?.App is { } app)
+{
+    <div class="banner @(app.Security ? "bad" : "info")">
+        <strong>@(app.Security ? "Security update" : "Update") @app.Version is available.</strong>
+        Download the new installer from <a href="@app.Url" target="_blank" rel="noopener">the release page</a> and run it on the server as an administrator. Scans are not lost during an update.
+    </div>
+}
+@if (_update?.Modules.Count > 0)
+{
+    <div class="banner info">
+        @(_update.Modules.Count == 1 ? "A module update is" : $"{_update.Modules.Count} module updates are") available. Run the installer on the server and open the Modules step.
+    </div>
+}
+
+<div class="cards">
+    <div class="card"><div class="label">Scans waiting</div><div class="value">@_waiting</div><div class="note">being written or uploaded</div></div>
+    <div class="card"><div class="label">Failed, last 24 hours</div><div class="value" style="@(_failed > 0 ? "color:var(--bad)" : "")">@_failed</div><div class="note"><a href="/jobs?status=Failed">Open Jobs</a></div></div>
+    <div class="card"><div class="label">Uploaded, last 24 hours</div><div class="value">@_uploaded</div><div class="note">@_people people can scan</div></div>
+    <div class="card">
+        <div class="label">Last sync</div>
+        @if (_lastSync is null)
+        {
+            <div class="value">—</div><div class="note">No sync has run yet</div>
+        }
+        else
+        {
+            var b = Badge.For(_lastSync.Status);
+            <div style="margin:6px 0"><Badge Text="@b.Text" Kind="@b.Kind" /></div>
+            <div class="note">@Fmt.Ago(_lastSync.StartedUtc, NowUtc) · <a href="/runs">Open Runs</a></div>
+        }
+    </div>
+</div>
+
+<h2>Printers</h2>
+@if (_printers.Count == 0)
+{
+    <div class="panel muted">No printers have been added yet.@(IsAdmin ? " Add one on the Printers page." : "")</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Printer</th><th>Entries</th><th>Last push</th><th>Last answered</th></tr></thead>
+            <tbody>
+                @foreach (var p in _printers)
+                {
+                    <tr>
+                        <td>@p.Name<div class="muted small">@p.Address</div></td>
+                        <td>@p.Entries</td>
+                        <td>
+                            @if (p.LastPush is { } push)
+                            {
+                                var b = Badge.For(push.Status);
+                                <Badge Text="@b.Text" Kind="@b.Kind" /> <span class="muted small">@Fmt.Ago(push.StartedUtc, NowUtc)</span>
+                                @if (push.Error is not null) { <div class="small wrap">@push.Error</div> }
+                            }
+                            else { <span class="muted">Never pushed</span> }
+                        </td>
+                        <td>
+                            @if (p.LastReachableUtc is null) { <Badge Text="Never" Kind="warn" /> }
+                            else if (NowUtc - p.LastReachableUtc > TimeSpan.FromHours(24)) { <Badge Text="@Fmt.Ago(p.LastReachableUtc, NowUtc)" Kind="bad" /> }
+                            else { <span>@Fmt.Ago(p.LastReachableUtc, NowUtc)</span> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Recent errors</h2>
+@if (_errors.Count == 0)
+{
+    <div class="panel muted">Nothing has failed in the last 24 hours.</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>When</th><th>What</th><th>Error</th></tr></thead>
+            <tbody>
+                @foreach (var e in _errors)
+                {
+                    <tr><td class="nowrap">@Fmt.Time(e.When)</td><td><a href="@e.Link">@e.What</a></td><td class="wrap">@e.Error</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private sealed record PrinterRow(string Name, string Address, int Entries, DateTime? LastReachableUtc, Push? LastPush);
+    private sealed record ErrorRow(DateTime When, string What, string? Error, string Link);
+
+    private int _waiting, _failed, _uploaded, _people;
+    private Run? _lastSync;
+    private List<PrinterRow> _printers = [];
+    private List<ErrorRow> _errors = [];
+    private UpdateStatus? _update;
+
+    protected override TimeSpan? RefreshEvery => TimeSpan.FromSeconds(5);
+
+    protected override async Task LoadAsync()
+    {
+        var s = await Settings.GetAsync();
+        if (!s.SetupComplete && IsAdmin && Nav.ToBaseRelativePath(Nav.Uri).Length == 0 && !_seenSetup)
+        {
+            // First run: the installer opens the admin screen and it walks through setup.
+            _seenSetup = true;
+            Nav.NavigateTo("/setup");
+            return;
+        }
+
+        var since = NowUtc.AddHours(-24);
+        await using var db = await Db.CreateDbContextAsync();
+        _waiting = await db.Jobs.CountAsync(j => j.Status == JobStatus.Waiting || j.Status == JobStatus.Uploading) + Pipeline.WaitingInInbox;
+        _failed = await db.Jobs.CountAsync(j => j.Status == JobStatus.Failed && j.DetectedUtc >= since);
+        _uploaded = await db.Jobs.CountAsync(j => j.Status == JobStatus.Uploaded && j.DetectedUtc >= since);
+        _people = await db.People.CountAsync(p => p.RemovedUtc == null);
+        _lastSync = await db.Runs.Where(r => r.Kind == RunKind.Sync).OrderByDescending(r => r.StartedUtc).FirstOrDefaultAsync();
+
+        var printers = await db.Printers.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
+        var counts = await db.PrinterEntries.GroupBy(e => e.PrinterId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+        _printers = [];
+        foreach (var p in printers)
+        {
+            var push = await db.Pushes.AsNoTracking().Where(x => x.PrinterId == p.Id).OrderByDescending(x => x.StartedUtc).FirstOrDefaultAsync();
+            _printers.Add(new PrinterRow(p.Name, p.Address, counts.GetValueOrDefault(p.Id), p.LastReachableUtc, push));
+        }
+
+        var jobs = await db.Jobs.AsNoTracking().Where(j => j.Status == JobStatus.Failed && j.DetectedUtc >= since)
+            .OrderByDescending(j => j.DetectedUtc).Take(10).ToListAsync();
+        var pushes = await db.Pushes.AsNoTracking().Include(p => p.Printer).Where(p => p.Status == PushStatus.Failed && p.StartedUtc >= since)
+            .OrderByDescending(p => p.StartedUtc).Take(10).ToListAsync();
+        _errors = [.. jobs.Select(j => new ErrorRow(j.DetectedUtc, "Scan " + j.OriginalFileName, j.Error, "/jobs?status=Failed"))
+            .Concat(pushes.Select(p => new ErrorRow(p.StartedUtc, "Push to " + p.Printer.Name, p.Error, "/runs")))
+            .OrderByDescending(e => e.When).Take(10)];
+        _update = await Updates.GetStatusAsync();
+    }
+
+    private bool _seenSetup;
+}

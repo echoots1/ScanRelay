@@ -1,0 +1,91 @@
+@page "/modules"
+@attribute [Authorize(Policy = Roles.Admin)]
+@inherits PageBase
+@inject ModuleHost Modules
+@inject UpdateChecker Updates
+@inject ModuleCatalog Catalog
+@inject SettingsStore Settings
+
+<PageTitle>Modules · ScanRelay</PageTitle>
+<h1>Modules</h1>
+<p class="lead">Support for a printer comes from a module. Modules are added, updated and removed through the installer, because installing code needs administrator rights on the server. The admin screen cannot install code.</p>
+<Messages Notice="@Notice" Error="@Error" />
+
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>Module</th><th>Covers</th><th>Version</th><th>From</th><th>State</th></tr></thead>
+        <tbody>
+            @if (Modules.Modules.Count == 0) { <tr><td colspan="5" class="muted">No modules are installed. Run the installer on the server and open the Modules step.</td></tr> }
+            @foreach (var m in Modules.Modules)
+            {
+                var update = _status?.Modules.FirstOrDefault(u => u.Id == m.Id);
+                <tr>
+                    <td>@m.Id<div class="muted small">@m.Data?.Vendor @m.Data?.Family</div></td>
+                    <td class="wrap small">@(m.Data is null ? "" : string.Join(", ", m.Data.Models))
+                        @if (m.Data?.Unofficial == true) { <div><Badge Text="Unofficial method" Kind="warn" /> @m.Data.Method</div> }
+                        @if (m.Data?.Prerequisites.Count > 0) { <div>Needs: @string.Join(", ", m.Data.Prerequisites)</div> }
+                    </td>
+                    <td class="nowrap">@m.Installed.Version
+                        @if (update is not null) { <div><Badge Text="@($"{update.Available} on GitHub")" Kind="warn" /></div> }
+                    </td>
+                    <td><Badge Text="@(m.IsCustom ? "Custom" : "Official")" Kind="@(m.IsCustom ? "warn" : "ok")" />
+                        @if (m.IsCustom) { <div class="muted small">Not checked by the project. The update check ignores it.</div> }</td>
+                    <td class="wrap">@if (m.Usable) { <Badge Text="Loaded" Kind="ok" /> } else { <Badge Text="Not loaded" Kind="bad" /><div class="small">@m.Problem</div> }</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<h2>On GitHub</h2>
+@if (_catalogProblem is not null)
+{
+    <div class="panel muted">@_catalogProblem</div>
+}
+else if (_available.Count == 0)
+{
+    <div class="panel muted">Every module on GitHub that fits this version is installed.</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Module</th><th>Covers</th><th>Version</th></tr></thead>
+            <tbody>
+                @foreach (var c in _available)
+                {
+                    <tr><td>@c.Id<div class="muted small">@c.Vendor @c.Family</div></td><td class="wrap small">@string.Join(", ", c.Models)</td><td>@c.Version</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="hint">To add one, run the installer on the server and tick it in the Modules step.</p>
+}
+
+@code {
+    private UpdateStatus? _status;
+    private List<CatalogEntry> _available = [];
+    private string? _catalogProblem;
+
+    protected override async Task LoadAsync()
+    {
+        _status = await Updates.GetStatusAsync();
+        if (!(await Settings.GetAsync()).UpdateCheck)
+        {
+            _catalogProblem = "The update check is turned off, so GitHub is not contacted. Watch the project's releases page instead.";
+            return;
+        }
+
+        try
+        {
+            var index = await Catalog.FetchAsync();
+            var installed = Modules.Modules.Select(m => m.Id).ToHashSet();
+            _available = [.. index.Modules.Where(c => !installed.Contains(c.Id) && c.WorksWithApp(ModuleHost.AppVersion)).OrderBy(c => c.Id)];
+            _catalogProblem = null;
+        }
+        catch (ModuleException e)
+        {
+            _catalogProblem = "The module list on GitHub could not be read. " + e.Message;
+        }
+    }
+}

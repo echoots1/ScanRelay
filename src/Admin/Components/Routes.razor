@@ -1,5 +1,16 @@
 <Router AppAssembly="typeof(App).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                <h1>No access</h1>
+                <p class="lead">Your role does not allow this page.</p>
+            </NotAuthorized>
+        </AuthorizeRouteView>
     </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(MainLayout)">
+            <h1>Page not found</h1>
+            <p class="lead"><a href="/">Back to the Dashboard</a></p>
+        </LayoutView>
+    </NotFound>
 </Router>

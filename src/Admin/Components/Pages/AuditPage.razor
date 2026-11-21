@@ -1,0 +1,47 @@
+@page "/audit"
+@attribute [Authorize(Policy = Roles.Admin)]
+@inherits PageBase
+
+<PageTitle>Audit log · ScanRelay</PageTitle>
+<h1>Audit log</h1>
+<p class="lead">Who changed what, and when.</p>
+<Messages Notice="@Notice" Error="@Error" />
+
+<form @onsubmit="() => DoAsync(() => Task.CompletedTask)" @onsubmit:preventDefault class="toolbar">
+    <input type="search" @bind="_search" placeholder="Person, action or target" aria-label="Search" />
+    <button type="submit">Search</button>
+</form>
+
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>When</th><th>Who</th><th>What</th><th>Target</th><th>Detail</th></tr></thead>
+        <tbody>
+            @if (_entries.Count == 0) { <tr><td colspan="5" class="muted">Nothing matches.</td></tr> }
+            @foreach (var e in _entries)
+            {
+                <tr><td class="nowrap">@Fmt.Time(e.AtUtc)</td><td>@e.ActorName</td><td>@e.Action</td><td class="wrap">@e.Target</td><td class="wrap">@e.Detail</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+@if (_entries.Count == _take) { <p><button @onclick="() => { _take += 200; return DoAsync(() => Task.CompletedTask); }">Show more</button></p> }
+
+@code {
+    private List<AuditEntry> _entries = [];
+    private string _search = "";
+    private int _take = 200;
+
+    protected override async Task LoadAsync()
+    {
+        await using var db = await Db.CreateDbContextAsync();
+        var query = db.AuditLog.AsNoTracking();
+        var text = _search.Trim();
+        if (text.Length > 0)
+        {
+            query = query.Where(a => EF.Functions.Like(a.ActorName, $"%{text}%") || EF.Functions.Like(a.Action, $"%{text}%")
+                || EF.Functions.Like(a.Target!, $"%{text}%") || EF.Functions.Like(a.Detail!, $"%{text}%"));
+        }
+
+        _entries = await query.OrderByDescending(a => a.Id).Take(_take).ToListAsync();
+    }
+}

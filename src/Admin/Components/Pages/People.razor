@@ -1,0 +1,167 @@
+@page "/people"
+@attribute [Authorize(Policy = Roles.Admin)]
+@inherits PageBase
+@inject ICloud Cloud
+@inject DirectorySync Sync
+@inject AuditLog Audit
+
+<PageTitle>People · ScanRelay</PageTitle>
+<h1>People</h1>
+<p class="lead">Everyone the groups bring in, plus people added by hand. Additions and exclusions made here are kept through every sync.</p>
+<Messages Notice="@Notice" Error="@Error" />
+
+@if (_pending)
+{
+    <div class="banner info">Changes here take effect at the next sync.
+        <button class="small primary" disabled="@(Busy || Sync.IsRunning)" @onclick="SyncNowAsync">Sync now</button></div>
+}
+
+<h2>Add a person by hand</h2>
+<div class="panel">
+    <form @onsubmit="SearchAsync" @onsubmit:preventDefault class="toolbar">
+        <input type="search" @bind="_search" placeholder="Name or sign-in name" aria-label="Search the tenant" />
+        <button type="submit" disabled="@Busy">Search the tenant</button>
+    </form>
+    <p class="hint">They do not need to be in any group. They must have a OneDrive, because that is where their scans go.</p>
+    @if (_found is { Count: 0 }) { <p class="muted">Nobody matches.</p> }
+    @if (_found is { Count: > 0 })
+    {
+        <ul class="plain">
+            @foreach (var u in _found)
+            {
+                <li><span>@u.DisplayName <span class="muted small">@u.UserPrincipalName</span></span>
+                    @if (_rows.Any(r => r.Person.Id == u.Id && r.Person.Source == PersonSource.Manual)) { <Badge Text="Already added" /> }
+                    else if (!u.Enabled) { <Badge Text="Account disabled" Kind="warn" /> }
+                    else { <button class="small" disabled="@Busy" @onclick="() => AddAsync(u)">Add</button> }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+<h2>On the list (@_rows.Count(r => r.Active))</h2>
+<div class="toolbar"><input type="search" @bind="_filter" @bind:event="oninput" placeholder="Filter this list" aria-label="Filter" /></div>
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>Person</th><th>From</th><th>Printers</th><th></th></tr></thead>
+        <tbody>
+            @if (!Shown.Any()) { <tr><td colspan="4" class="muted">Nobody yet. People appear after the first sync.</td></tr> }
+            @foreach (var row in Shown)
+            {
+                var p = row.Person;
+                <tr>
+                    <td>@p.DisplayName<div class="muted small">@p.UserPrincipalName</div></td>
+                    <td>
+                        <Badge Text="@(p.Source == PersonSource.Manual ? "Added by hand" : "Group")" Kind="@(p.Source == PersonSource.Manual ? "warn" : "plain")" />
+                        @if (p.Excluded) { <Badge Text="Excluded" Kind="bad" /> }
+                        else if (!row.Active) { <div class="muted small">Not active until the next sync, or the account is disabled or has no OneDrive</div> }
+                    </td>
+                    <td class="wrap">
+                        @(row.Printers.Count == 0 ? "None" : string.Join(", ", row.Printers))
+                        @if (p.Source == PersonSource.Manual && !p.Excluded && _printers.Count > 0)
+                        {
+                            <div class="small" style="margin-top:4px">
+                                <label><input type="checkbox" checked="@p.OnAllPrinters" disabled="@Busy" @onchange="e => SetAllPrintersAsync(p, (bool)e.Value!)" /> Every printer</label>
+                                @if (!p.OnAllPrinters)
+                                {
+                                    @foreach (var printer in _printers)
+                                    {
+                                        <label style="margin-left:10px"><input type="checkbox" checked="@p.Printers.Any(l => l.PrinterId == printer.Id)" disabled="@Busy"
+                                            @onchange="e => SetPrinterAsync(p, printer.Id, (bool)e.Value!)" /> @printer.Name</label>
+                                    }
+                                }
+                            </div>
+                        }
+                    </td>
+                    <td class="actions">
+                        @if (p.Excluded) { <button class="small" disabled="@Busy" @onclick="() => ExcludeAsync(p, false)">Include again</button> }
+                        else { <button class="small" disabled="@Busy" @onclick="() => ExcludeAsync(p, true)">Exclude</button> }
+                        @if (p.Source == PersonSource.Manual) { <button class="small danger" disabled="@Busy" @onclick="() => RemoveManualAsync(p)">Remove</button> }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private sealed record Row(Person Person, List<string> Printers)
+    {
+        public bool Active => Person.RemovedUtc is null && !Person.Excluded;
+    }
+
+    private List<Row> _rows = [];
+    private List<Printer> _printers = [];
+    private IReadOnlyList<DirectoryUser>? _found;
+    private string _search = "";
+    private string _filter = "";
+    private bool _pending;
+
+    private IEnumerable<Row> Shown => _rows.Where(r => _filter.Length == 0
+        || r.Person.DisplayName.Contains(_filter, StringComparison.OrdinalIgnoreCase)
+        || r.Person.UserPrincipalName.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task LoadAsync()
+    {
+        await using var db = await Db.CreateDbContextAsync();
+        _printers = await db.Printers.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
+        var names = _printers.ToDictionary(p => p.Id, p => p.Name);
+        var entries = (await db.PrinterEntries.AsNoTracking().ToListAsync()).ToLookup(e => e.PersonId, e => names.GetValueOrDefault(e.PrinterId) ?? "");
+        var people = await db.People.AsNoTracking().Include(p => p.Printers)
+            .Where(p => p.RemovedUtc == null || p.Source == PersonSource.Manual || p.Excluded)
+            .OrderBy(p => p.DisplayName).ToListAsync();
+        _rows = [.. people.Select(p => new Row(p, [.. entries[p.Id].Order()]))];
+    }
+
+    private Task SearchAsync() => DoAsync(async () => { _found = await Cloud.SearchUsersAsync(_search); });
+
+    private Task AddAsync(DirectoryUser user) => DoAsync(async () =>
+    {
+        if (!await Cloud.HasOneDriveAsync(user.Id)) return $"{user.DisplayName} has no OneDrive, so their scans would have nowhere to go.";
+        await using var db = await Db.CreateDbContextAsync();
+        var person = await db.People.FindAsync(user.Id);
+        if (person is null)
+        {
+            // Marked as not yet active; the next sync creates their folder and entries.
+            person = new Person { Id = user.Id, DisplayName = user.DisplayName, UserPrincipalName = user.UserPrincipalName, FirstSeenUtc = NowUtc, RemovedUtc = NowUtc };
+            db.People.Add(person);
+        }
+
+        person.Source = PersonSource.Manual;
+        person.Excluded = false;
+        await db.SaveChangesAsync();
+        await Audit.WriteAsync(Actor, "Person added by hand", user.DisplayName);
+        _pending = true;
+        return null;
+    }, "Added. They are put on every printer unless you choose otherwise below.");
+
+    private Task ExcludeAsync(Person p, bool excluded) => ChangeAsync(p.Id, x => x.Excluded = excluded, excluded ? "Person excluded" : "Person included again", p.DisplayName);
+
+    private Task RemoveManualAsync(Person p) => ChangeAsync(p.Id, x => { x.Source = PersonSource.Group; x.OnAllPrinters = true; x.Printers.Clear(); }, "Manual person removed", p.DisplayName);
+
+    private Task SetAllPrintersAsync(Person p, bool all) => ChangeAsync(p.Id, x => x.OnAllPrinters = all, "Manual person's printers changed", p.DisplayName);
+
+    private Task SetPrinterAsync(Person p, int printerId, bool on) => ChangeAsync(p.Id, x =>
+    {
+        x.Printers.RemoveAll(l => l.PrinterId == printerId);
+        if (on) x.Printers.Add(new PersonPrinter { PersonId = x.Id, PrinterId = printerId });
+    }, "Manual person's printers changed", p.DisplayName);
+
+    private Task ChangeAsync(Guid id, Action<Person> change, string action, string name) => DoAsync(async () =>
+    {
+        await using var db = await Db.CreateDbContextAsync();
+        var person = await db.People.Include(x => x.Printers).FirstOrDefaultAsync(x => x.Id == id);
+        if (person is null) return "That person is no longer on the list.";
+        change(person);
+        await db.SaveChangesAsync();
+        await Audit.WriteAsync(Actor, action, name);
+        _pending = true;
+        return null;
+    });
+
+    private Task SyncNowAsync() => DoAsync(async () =>
+    {
+        await Sync.RunAsync(RunKind.Sync, RunTrigger.Manual, Actor);
+        _pending = false;
+    }, "The sync has finished. See Runs for what it did.");
+}

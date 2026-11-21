@@ -1,6 +1,25 @@
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Web
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.EntityFrameworkCore
+@using ScanRelay.Admin
 @using ScanRelay.Admin.Components
 @using ScanRelay.Admin.Components.Layout
+@using ScanRelay.Admin.Components.Shared
+@using ScanRelay.Core
+@using ScanRelay.Core.Alerts
+@using ScanRelay.Core.Audit
+@using ScanRelay.Core.Cloud
+@using ScanRelay.Core.Data
+@using ScanRelay.Core.Health
+@using ScanRelay.Core.Install
+@using ScanRelay.Core.Jobs
+@using ScanRelay.Core.Modules
+@using ScanRelay.Core.Printers
+@using ScanRelay.Core.Settings
+@using ScanRelay.Core.Sync
+@using ScanRelay.Core.Updates

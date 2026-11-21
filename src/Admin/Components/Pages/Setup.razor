@@ -1,0 +1,387 @@
+@page "/setup"
+@attribute [Authorize(Policy = Roles.Admin)]
+@inherits PageBase
+@inject SettingsStore Store
+@inject ICloud Cloud
+@inject DeviceCodeFlow DeviceCode
+@inject AppRegistration Registration
+@inject AppTokenProvider Tokens
+@inject HealthCheck Health
+@inject InstallConfig Install
+@inject AuditLog Audit
+
+<PageTitle>Setup · ScanRelay</PageTitle>
+<h1>Setup</h1>
+<p class="lead">@(_s?.SetupComplete == true
+    ? "Setup is finished. You can run any step again."
+    : "Until setup is finished there is no sign-in, so this screen answers only on the server itself.")</p>
+
+<ol class="steps">
+    @for (var i = 0; i < StepNames.Length; i++)
+    {
+        var n = i;
+        <li class="@(n == _step ? "current" : Done(n) ? "done" : "")"><a href="/setup" @onclick="() => _step = n" @onclick:preventDefault style="color:inherit;text-decoration:none">@(n + 1). @StepNames[n]</a></li>
+    }
+</ol>
+<Messages Notice="@Notice" Error="@Error" />
+
+@if (_s is null) { return; }
+
+@if (_step == 0)
+{
+    <h2>1. Connect to Entra</h2>
+    <div class="panel">
+        @if (Connected)
+        {
+            <div class="banner ok">Connected. Tenant <span class="code">@_s.TenantId</span>, application <span class="code">@_s.ClientId</span>.</div>
+        }
+        <p>Setup creates the app registration, so nobody builds it by hand in the Entra portal. An Entra admin signs in once, here. Setup keeps nothing from that sign-in.</p>
+        <p class="hint"><strong>Role to create it:</strong> Application Administrator or Cloud Application Administrator.
+            <strong>Role to approve the permissions:</strong> Privileged Role Administrator or Global Administrator. They can be two different people.</p>
+
+        @if (_code is null && !_byHand)
+        {
+            <div class="toolbar">
+                <button class="primary" disabled="@Busy" @onclick="StartCodeAsync">@(Connected ? "Run it again to repair" : "Create the app registration")</button>
+                <button disabled="@Busy" @onclick="() => _byHand = true">I will create it by hand</button>
+            </div>
+        }
+
+        @if (_code is not null)
+        {
+            <h3>Sign in from any browser</h3>
+            <p>Open <a href="@_code.VerificationUri" target="_blank" rel="noopener">@_code.VerificationUri</a> and enter this code:</p>
+            <p class="bigcode" aria-label="Sign-in code">@_code.UserCode</p>
+            <p class="muted">@_codeStatus</p>
+            <div class="toolbar"><button @onclick="CancelCode">Cancel</button></div>
+        }
+
+        @if (_byHand)
+        {
+            <h3>Create it by hand</h3>
+            <p>In the Entra admin centre, create an app registration with exactly these values, then enter its IDs below.</p>
+            <dl class="kv">
+                <dt>Name</dt><dd>@AppRegistration.DisplayName</dd>
+                <dt>Supported account types</dt><dd>This organisation only (single tenant)</dd>
+                <dt>Redirect addresses (Web)</dt><dd><span class="code">@AppRegistration.RedirectUri(Install.Url)</span> and <span class="code">@AppRegistration.RedirectUri(Install.LocalUrl())</span></dd>
+                <dt>Certificate</dt><dd><a href="/files/graph-certificate">Download the certificate</a> and upload it under Certificates &amp; secrets. Do not create a client secret.</dd>
+            </dl>
+            <h3>API permissions on Microsoft Graph</h3>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Permission</th><th>Type</th><th>Used for</th></tr></thead>
+                <tbody>
+                    @foreach (var p in AppRegistration.Permissions)
+                    {
+                        <tr><td><span class="code">@p.Name</span></td><td>@(p.IsApplication ? "Application" : "Delegated")</td><td>@p.UsedFor</td></tr>
+                    }
+                </tbody>
+            </table></div>
+            <p class="hint">Then press "Grant admin consent" in the portal.</p>
+            <div class="field" style="margin-top:14px"><label for="h-tenant">Directory (tenant) ID</label><input id="h-tenant" type="text" @bind="_handTenant" /></div>
+            <div class="field"><label for="h-client">Application (client) ID</label><input id="h-client" type="text" @bind="_handClient" /></div>
+            <div class="toolbar">
+                <button class="primary" disabled="@Busy" @onclick="SaveByHandAsync">Save and check</button>
+                <button @onclick="() => _byHand = false">Back</button>
+            </div>
+        }
+
+        @if (Connected && _code is null)
+        {
+            <h3>Approve the permissions</h3>
+            @if (_missing is { Count: 0 })
+            {
+                <div class="banner ok">All permissions are approved.</div>
+            }
+            else
+            {
+                <p>Someone with the Privileged Role Administrator or Global Administrator role opens this link and approves. It can be sent to them.</p>
+                <p><a class="code" href="@Registration.AdminConsentUrl(_s.TenantId!, _s.ClientId!)" target="_blank" rel="noopener">@Registration.AdminConsentUrl(_s.TenantId!, _s.ClientId!)</a></p>
+                @if (_missing is { Count: > 0 })
+                {
+                    <p class="muted">Still waiting for: @string.Join(", ", _missing). This page checks every few seconds.</p>
+                }
+            }
+            <div class="toolbar">
+                <button disabled="@Busy" @onclick="CheckConsentAsync">Check now</button>
+                <button class="primary" disabled="@(_missing is not { Count: 0 })" @onclick="() => _step = 1">Next</button>
+            </div>
+        }
+    </div>
+}
+
+@if (_step == 1)
+{
+    <h2>2. Choose the admin group</h2>
+    <div class="panel">
+        <GroupPicker Label="Admin group" GroupId="_s.AdminGroupId" GroupName="@_s.AdminGroupName"
+                     Hint="Members can open the admin screen and receive the alert emails. You must be a member to finish setup."
+                     Changed="g => SaveAsync(s => s with { AdminGroupId = g?.Id ?? s.AdminGroupId, AdminGroupName = g?.DisplayName ?? s.AdminGroupName })" />
+        <GroupPicker Label="Helpdesk group (optional)" AllowNone="true" GroupId="_s.HelpdeskGroupId" GroupName="@_s.HelpdeskGroupName"
+                     Hint="Members can view jobs and runs, and re-run them."
+                     Changed="g => SaveAsync(s => s with { HelpdeskGroupId = g?.Id, HelpdeskGroupName = g?.DisplayName })" />
+        <div class="toolbar"><button class="primary" disabled="@(_s.AdminGroupId is null)" @onclick="() => _step = 2">Next</button></div>
+    </div>
+}
+
+@if (_step == 2)
+{
+    <h2>3. Pick the default sync group</h2>
+    <div class="panel">
+        <GroupPicker Label="Default sync group" GroupId="_s.DefaultSyncGroupId" GroupName="@_s.DefaultSyncGroupName"
+                     Hint="Everyone who can scan. Each member gets a folder on this server and an entry on each printer."
+                     Changed="g => SaveAsync(s => s with { DefaultSyncGroupId = g?.Id ?? s.DefaultSyncGroupId, DefaultSyncGroupName = g?.DisplayName ?? s.DefaultSyncGroupName })" />
+        <div class="toolbar"><button class="primary" disabled="@(_s.DefaultSyncGroupId is null)" @onclick="() => _step = 3">Next</button></div>
+    </div>
+}
+
+@if (_step == 3)
+{
+    <h2>4. Choose the mailbox alert emails are sent from</h2>
+    <div class="panel">
+        <div class="field"><label for="a-sender">Alert sender</label>
+            <input id="a-sender" type="text" @bind="_sender" placeholder="alerts@your-organisation.example" />
+            <div class="hint">A mailbox in this tenant, such as a shared mailbox. Alert emails go to the members of the admin group. You can leave this empty and set it later in Settings; failures still show on the Dashboard.</div></div>
+        <div class="toolbar">
+            <button class="primary" disabled="@Busy" @onclick="SaveSenderAsync">@(string.IsNullOrWhiteSpace(_sender) ? "Skip for now" : "Save")</button>
+        </div>
+    </div>
+}
+
+@if (_step == 4)
+{
+    <h2>5. Add the first printer</h2>
+    <div class="panel">
+        @if (_printerCount > 0)
+        {
+            <div class="banner ok">@_printerCount printer(s) added.</div>
+        }
+        <p>Add a printer on the Printers page: pick it from the printers installed on this server, enter its admin sign-in, test the connection, push a test entry, then push the full list.</p>
+        <p class="hint">You can also go live without printers and keep the address books by hand. Each person's scan folder is <span class="code">\\@(Install.ServerName ?? "this-server")\@(Install.ShareName ?? "share")\&lt;their user ID&gt;</span>, written with the account <span class="code">@(Install.PrinterAccount ?? "the printer account")</span>.</p>
+        <div class="toolbar">
+            <a class="button primary" href="/printers">Open the Printers page</a>
+            <button @onclick="() => _step = 5">Next</button>
+        </div>
+    </div>
+}
+
+@if (_step == 5)
+{
+    <h2>6. Scan one page</h2>
+    <div class="panel">
+        <p>Scan one page to your own name at the printer. It should show here within a few seconds of the printer finishing, and land in <span class="code">@_s.OneDriveFolder</span> in your OneDrive.</p>
+        @if (_recent.Count == 0)
+        {
+            <p class="muted">No scans yet. This list updates on its own.</p>
+        }
+        else
+        {
+            <ul class="plain">
+                @foreach (var job in _recent)
+                {
+                    var b = Badge.For(job.Status);
+                    <li><span class="muted small">@Fmt.Time(job.DetectedUtc)</span><Badge Text="@b.Text" Kind="@b.Kind" /><span class="wrap">@(job.Status == JobStatus.Uploaded ? job.UploadedFileName : job.Error)</span></li>
+                }
+            </ul>
+        }
+        <div class="toolbar"><button class="primary" @onclick="() => _step = 6">Next</button></div>
+    </div>
+}
+
+@if (_step == 6)
+{
+    <h2>7. Sign in to finish</h2>
+    <div class="panel">
+        @if (_s.SetupComplete)
+        {
+            <div class="banner ok">Setup is finished. The admin screen needs sign-in from now on.</div>
+            <div class="toolbar"><a class="button primary" href="/">Open the Dashboard</a></div>
+        }
+        else
+        {
+            <p>Sign in as a member of <strong>@(_s.AdminGroupName ?? "the admin group")</strong>. When that works, setup is finished: every page needs sign-in from then on, and the screen can be opened from other computers at <span class="code">@Install.Url</span>.</p>
+            <p class="hint">Until a member has signed in successfully, this screen stays open on the server itself. A wrong group therefore cannot lock everyone out.</p>
+            @if (_finalHealth is not null)
+            {
+                <ul class="plain">
+                    @foreach (var item in _finalHealth.Where(i => i.State != HealthState.Ok))
+                    {
+                        var b = Badge.For(item.State);
+                        <li><Badge Text="@b.Text" Kind="@b.Kind" /><strong>@item.Name</strong><span class="wrap">@item.Detail</span></li>
+                    }
+                </ul>
+            }
+            <div class="toolbar">
+                <a class="button primary" href="/signin?returnUrl=/setup%3Fstep%3Dfinish" data-enhance-nav="false">Sign in to finish</a>
+                <button disabled="@Busy" @onclick="FinalHealthAsync">Run the health check first</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private static readonly string[] StepNames = ["Entra", "Admin group", "Sync group", "Alert mailbox", "First printer", "Test scan", "Finish"];
+
+    private AppSettings? _s;
+    private int _step = -1;
+    private bool _byHand;
+    private string _handTenant = "";
+    private string _handClient = "";
+    private string _sender = "";
+    private int _printerCount;
+    private List<Job> _recent = [];
+    private IReadOnlyList<string>? _missing;
+    private IReadOnlyList<HealthItem>? _finalHealth;
+    private DeviceCodeFlow.Started? _code;
+    private string _codeStatus = "";
+    private CancellationTokenSource? _codeCancel;
+
+    [SupplyParameterFromQuery(Name = "step")] public string? StepQuery { get; set; }
+
+    protected override TimeSpan? RefreshEvery => TimeSpan.FromSeconds(4);
+
+    private bool Connected => !string.IsNullOrEmpty(_s?.TenantId) && !string.IsNullOrEmpty(_s?.ClientId);
+
+    private bool Done(int step) => _s is not null && step switch
+    {
+        0 => Connected && _missing is { Count: 0 },
+        1 => _s.AdminGroupId is not null,
+        2 => _s.DefaultSyncGroupId is not null,
+        3 => !string.IsNullOrWhiteSpace(_s.AlertSender),
+        4 => _printerCount > 0,
+        5 => _recent.Any(j => j.Status == JobStatus.Uploaded),
+        _ => _s.SetupComplete,
+    };
+
+    protected override async Task LoadAsync()
+    {
+        _s = await Store.GetAsync();
+        await using var db = await Db.CreateDbContextAsync();
+        _printerCount = await db.Printers.CountAsync();
+        _recent = await db.Jobs.AsNoTracking().OrderByDescending(j => j.DetectedUtc).Take(5).ToListAsync();
+        if (Connected && _missing is not { Count: 0 } && _code is null)
+        {
+            try
+            {
+                Tokens.Reset();
+                _missing = [.. AppRegistration.ApplicationPermissionNames.Except(await Cloud.GetGrantedPermissionsAsync())];
+            }
+            catch (CloudException)
+            {
+                // Entra can take a minute to know about a registration it has just created.
+            }
+        }
+
+        if (_step < 0)
+        {
+            _sender = _s.AlertSender ?? "";
+            _step = StepQuery switch
+            {
+                "entra" => 0,
+                "finish" => 6,
+                _ => !Done(0) ? 0 : !Done(1) ? 1 : !Done(2) ? 2 : 6,
+            };
+        }
+    }
+
+    private Task StartCodeAsync() => DoAsync(async () =>
+    {
+        _code = await DeviceCode.StartAsync(null, Clock);
+        _codeStatus = "Waiting for the sign-in…";
+        _codeCancel = new CancellationTokenSource();
+        _ = PollAsync(_code, _codeCancel.Token);
+    });
+
+    private async Task PollAsync(DeviceCodeFlow.Started code, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && Clock.GetUtcNow() < code.Expires)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(2, code.IntervalSeconds)), ct);
+                var result = await DeviceCode.PollAsync(null, code.DeviceCode, ct);
+                if (result.Pending) continue;
+                if (result.AccessToken is null)
+                {
+                    await FinishCodeAsync(null, "The sign-in did not complete. " + result.Error);
+                    return;
+                }
+
+                await InvokeAsync(() => { _codeStatus = "Signed in. Creating the app registration…"; StateHasChanged(); });
+                var created = await Registration.CreateOrRepairAsync(result.AccessToken, ct);
+                await Store.UpdateAsync(s => s with { TenantId = created.TenantId, ClientId = created.ClientId }, Actor, ct);
+                await Audit.WriteAsync(Actor, created.Created ? "App registration created" : "App registration repaired", created.ClientId, ct: ct);
+                await FinishCodeAsync(created.Created ? "The app registration was created. Now the permissions need approving." : "The existing app registration was found and repaired.", null);
+                return;
+            }
+
+            if (!ct.IsCancellationRequested) await FinishCodeAsync(null, "The code expired before anyone signed in. Start again.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (CloudException e)
+        {
+            await FinishCodeAsync(null, "The app registration could not be created. " + e.Message + " If your tenant blocks this kind of sign-in, create the registration by hand.");
+        }
+    }
+
+    private Task FinishCodeAsync(string? notice, string? error) => InvokeAsync(async () =>
+    {
+        _code = null;
+        _missing = null;
+        (Notice, Error) = (notice, error);
+        _s = await Store.GetAsync();
+        StateHasChanged();
+    });
+
+    private void CancelCode()
+    {
+        _codeCancel?.Cancel();
+        _code = null;
+    }
+
+    private Task SaveByHandAsync() => DoAsync(async () =>
+    {
+        if (!Guid.TryParse(_handTenant.Trim(), out var tenant) || !Guid.TryParse(_handClient.Trim(), out var client))
+        {
+            return "Both IDs are GUIDs, such as 00000000-0000-0000-0000-000000000000. Copy them from the registration's Overview page.";
+        }
+
+        await Store.UpdateAsync(s => s with { TenantId = tenant.ToString(), ClientId = client.ToString() }, Actor);
+        await Audit.WriteAsync(Actor, "App registration entered by hand", client.ToString());
+        Tokens.Reset();
+        _missing = [.. AppRegistration.ApplicationPermissionNames.Except(await Cloud.GetGrantedPermissionsAsync())];
+        _byHand = false;
+        return null;
+    }, "Saved. The service signed in with its certificate.");
+
+    private Task CheckConsentAsync() => DoAsync(async () =>
+    {
+        Tokens.Reset();
+        _missing = [.. AppRegistration.ApplicationPermissionNames.Except(await Cloud.GetGrantedPermissionsAsync())];
+        return _missing.Count == 0 ? null : "Not approved yet: " + string.Join(", ", _missing) + ".";
+    }, "All permissions are approved.");
+
+    private Task SaveAsync(Func<AppSettings, AppSettings> change) => DoAsync(() => Store.UpdateAsync(change, Actor));
+
+    private Task SaveSenderAsync() => DoAsync(async () =>
+    {
+        var sender = _sender.Trim();
+        if (sender.Length > 0 && !sender.Contains('@')) return "Enter the mailbox's full address.";
+        await Store.UpdateAsync(s => s with { AlertSender = sender.Length > 0 ? sender : null }, Actor);
+        _step = 4;
+        return null;
+    });
+
+    private Task FinalHealthAsync() => DoAsync(async () =>
+    {
+        _finalHealth = await Health.RunAsync();
+        if (_finalHealth.All(i => i.State == HealthState.Ok)) Notice = "Everything checks out.";
+    });
+
+    public override void Dispose()
+    {
+        _codeCancel?.Cancel();
+        base.Dispose();
+    }
+}

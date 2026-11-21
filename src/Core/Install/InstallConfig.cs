@@ -46,6 +46,13 @@ public sealed class InstallConfig
     public bool ReopenSetup { get; set; }
 
     public CloudEndpoints Cloud { get; set; } = new();
+
+    /// <summary>The admin screen's address as opened on the server itself.</summary>
+    public string LocalUrl()
+    {
+        var uri = new Uri(Url);
+        return $"{uri.Scheme}://localhost:{uri.Port}";
+    }
 }
 
 /// <summary>Where Microsoft's services are. Only changed for national clouds and tests.</summary>

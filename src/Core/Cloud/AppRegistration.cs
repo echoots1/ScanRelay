@@ -40,7 +40,8 @@ public sealed class AppRegistration(HttpClient http, InstallConfig install, Grap
             ?? throw new CloudException("The sign-in did not say which tenant it was for.");
 
         var cert = certificate.Get();
-        var redirect = RedirectUri(install.Url);
+        // Both the server's name and localhost, so signing in works from the server itself too.
+        string[] ours = [RedirectUri(install.Url), RedirectUri(install.LocalUrl())];
         var found = await graph.GetAsync($"applications?$filter=displayName eq '{DisplayName}'&$select=id,appId,web,keyCredentials", ct);
         var existing = (found["value"] as JsonArray)?.FirstOrDefault()?.AsObject();
 
@@ -73,7 +74,7 @@ public sealed class AppRegistration(HttpClient http, InstallConfig install, Grap
         bool created;
         if (existing is null)
         {
-            body["web"] = new JsonObject { ["redirectUris"] = new JsonArray(redirect) };
+            body["web"] = new JsonObject { ["redirectUris"] = new JsonArray([.. ours.Distinct(StringComparer.OrdinalIgnoreCase).Select(r => (JsonNode)r)]) };
             var app = await graph.PostAsync("applications", body, ct);
             appId = app["appId"]!.GetValue<string>();
             created = true;
@@ -83,7 +84,7 @@ public sealed class AppRegistration(HttpClient http, InstallConfig install, Grap
             // Keep any redirect addresses already there, so a second server or a renamed one keeps working.
             var redirects = (existing["web"]?["redirectUris"] as JsonArray ?? [])
                 .Select(r => r!.GetValue<string>())
-                .Append(redirect)
+                .Concat(ours)
                 .Distinct(StringComparer.OrdinalIgnoreCase);
             body["web"] = new JsonObject { ["redirectUris"] = new JsonArray([.. redirects.Select(r => (JsonNode)r)]) };
             await graph.PatchAsync($"applications/{existing["id"]!.GetValue<string>()}", body, ct);

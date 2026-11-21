@@ -1,0 +1,38 @@
+<span class="badge @Kind">@Text</span>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public string Kind { get; set; } = "plain";
+
+    public static (string Text, string Kind) For(JobStatus status) => status switch
+    {
+        JobStatus.Uploaded => ("Uploaded", "ok"),
+        JobStatus.Failed => ("Failed", "bad"),
+        JobStatus.Uploading => ("Uploading", "warn"),
+        _ => ("Waiting", "plain"),
+    };
+
+    public static (string Text, string Kind) For(RunStatus status) => status switch
+    {
+        RunStatus.Succeeded => ("Succeeded", "ok"),
+        RunStatus.Failed => ("Failed", "bad"),
+        RunStatus.Held => ("Waiting for approval", "warn"),
+        RunStatus.Cancelled => ("Cancelled", "plain"),
+        _ => ("Running", "warn"),
+    };
+
+    public static (string Text, string Kind) For(PushStatus status) => status switch
+    {
+        PushStatus.Succeeded => ("Succeeded", "ok"),
+        PushStatus.Failed => ("Failed", "bad"),
+        PushStatus.Paused => ("Paused", "warn"),
+        _ => ("Running", "warn"),
+    };
+
+    public static (string Text, string Kind) For(HealthState state) => state switch
+    {
+        HealthState.Ok => ("OK", "ok"),
+        HealthState.Warning => ("Check", "warn"),
+        _ => ("Problem", "bad"),
+    };
+}

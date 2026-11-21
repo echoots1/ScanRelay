@@ -1,0 +1,130 @@
+@page "/jobs"
+@inherits PageBase
+@inject JobPipeline Pipeline
+
+<PageTitle>Jobs · ScanRelay</PageTitle>
+<h1>Jobs</h1>
+<p class="lead">Every scan is a job. Find a scan, read its error, and re-run it while its file is still on the server.</p>
+<Messages Notice="@Notice" Error="@Error" />
+
+<div class="toolbar">
+    <label>Status
+        <select @bind="_status" @bind:after="ReloadAsync">
+            <option value="">All</option>
+            <option value="Failed">Failed</option>
+            <option value="Uploaded">Uploaded</option>
+            <option value="Waiting">Waiting or uploading</option>
+        </select>
+    </label>
+    <form @onsubmit="ReloadAsync" @onsubmit:preventDefault style="display:flex;gap:8px">
+        <input type="search" @bind="_search" placeholder="Person, file name or error" aria-label="Search" />
+        <button type="submit">Search</button>
+    </form>
+    <span class="spacer"></span>
+    <span class="muted small">@_total job(s)</span>
+</div>
+
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>Time</th><th>Person</th><th class="num">Size</th><th>Status</th><th>File in OneDrive, or error</th><th></th></tr></thead>
+        <tbody>
+            @if (_jobs.Count == 0)
+            {
+                <tr><td colspan="6" class="muted">No jobs match.</td></tr>
+            }
+            @foreach (var row in _jobs)
+            {
+                var job = row.Job;
+                var b = Badge.For(job.Status);
+                var hasFile = job.FileDeletedUtc is null;
+                <tr>
+                    <td class="nowrap">@Fmt.Time(job.DetectedUtc)</td>
+                    <td>@(row.Person ?? "Unknown")<div class="muted small wrap">@(row.Person is null ? $"Folder {job.FolderName}" : job.OriginalFileName)</div></td>
+                    <td class="num">@Fmt.Size(job.SizeBytes)</td>
+                    <td><Badge Text="@b.Text" Kind="@b.Kind" />@if (job.Attempts > 1) { <div class="muted small">@job.Attempts attempts</div> }</td>
+                    <td class="wrap">@(job.Status == JobStatus.Uploaded ? job.UploadedFileName : job.Error)</td>
+                    <td class="actions">
+                        @if (job.Status == JobStatus.Failed && hasFile)
+                        {
+                            <button class="small" disabled="@Busy" @onclick="() => RerunAsync(job.Id)">Re-run</button>
+                        }
+                        @if (IsAdmin && hasFile && job.Status is JobStatus.Uploaded or JobStatus.Failed)
+                        {
+                            <a class="button small" href="/files/job/@job.Id" target="_blank" rel="noopener">Open file</a>
+                        }
+                        @if (!hasFile) { <span class="muted small">File removed</span> }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+@if (_jobs.Count < _total)
+{
+    <p><button @onclick="MoreAsync">Show more</button></p>
+}
+
+@code {
+    private sealed record Row(Job Job, string? Person);
+
+    private List<Row> _jobs = [];
+    private string _status = "";
+    private string _search = "";
+    private int _take = 50;
+    private int _total;
+
+    [SupplyParameterFromQuery(Name = "status")] public string? StatusQuery { get; set; }
+
+    protected override TimeSpan? RefreshEvery => TimeSpan.FromSeconds(5);
+
+    protected override void OnParametersSet()
+    {
+        if (StatusQuery is "Failed" or "Uploaded" or "Waiting" && _status.Length == 0 && !_queryUsed) _status = StatusQuery;
+        _queryUsed = true;
+    }
+
+    protected override async Task LoadAsync()
+    {
+        await using var db = await Db.CreateDbContextAsync();
+        var query = db.Jobs.AsNoTracking();
+        query = _status switch
+        {
+            "Failed" => query.Where(j => j.Status == JobStatus.Failed),
+            "Uploaded" => query.Where(j => j.Status == JobStatus.Uploaded),
+            "Waiting" => query.Where(j => j.Status == JobStatus.Waiting || j.Status == JobStatus.Uploading),
+            _ => query,
+        };
+        var text = _search.Trim();
+        if (text.Length > 0)
+        {
+            var people = await db.People.Where(p => EF.Functions.Like(p.DisplayName, $"%{text}%") || EF.Functions.Like(p.UserPrincipalName, $"%{text}%")).Select(p => (Guid?)p.Id).ToListAsync();
+            query = query.Where(j => people.Contains(j.PersonId)
+                || EF.Functions.Like(j.OriginalFileName, $"%{text}%")
+                || EF.Functions.Like(j.UploadedFileName!, $"%{text}%")
+                || EF.Functions.Like(j.Error!, $"%{text}%")
+                || EF.Functions.Like(j.FolderName, $"%{text}%"));
+        }
+
+        _total = await query.CountAsync();
+        var jobs = await query.OrderByDescending(j => j.DetectedUtc).Take(_take).ToListAsync();
+        var ids = jobs.Where(j => j.PersonId is not null).Select(j => j.PersonId!.Value).Distinct().ToList();
+        var names = await db.People.Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.DisplayName);
+        _jobs = [.. jobs.Select(j => new Row(j, j.PersonId is { } id ? names.GetValueOrDefault(id) : null))];
+    }
+
+    private bool _queryUsed;
+
+    private Task ReloadAsync()
+    {
+        _take = 50;
+        return DoAsync(() => Task.CompletedTask);
+    }
+
+    private Task MoreAsync()
+    {
+        _take += 100;
+        return DoAsync(() => Task.CompletedTask);
+    }
+
+    private Task RerunAsync(Guid id) => DoAsync(() => Pipeline.RerunAsync(id, Actor), "The job was re-run. Its new status is shown below.");
+}

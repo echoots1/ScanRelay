@@ -1,0 +1,81 @@
+@inject ICloud Cloud
+
+<div class="field">
+    <label for="@_id">@Label</label>
+    @if (GroupId is not null)
+    {
+        <div style="margin-bottom:6px"><Badge Text="@(GroupName ?? GroupId.ToString()!)" Kind="ok" />
+            @if (AllowNone)
+            {
+                <button type="button" class="small" @onclick="ClearAsync">Remove</button>
+            }
+        </div>
+    }
+    <form @onsubmit="SearchAsync" @onsubmit:preventDefault style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="@_id" type="search" @bind="_text" placeholder="Start of the group's name" />
+        <button type="submit" disabled="@_busy">Search Entra</button>
+    </form>
+    @if (_error is not null)
+    {
+        <div class="hint" style="color:var(--bad)">@_error</div>
+    }
+    @if (_results is { Count: 0 })
+    {
+        <div class="hint">No groups start with that.</div>
+    }
+    @if (_results is { Count: > 0 })
+    {
+        <ul class="plain" style="max-width:520px">
+            @foreach (var g in _results)
+            {
+                <li><span>@g.DisplayName</span> <button type="button" class="small" @onclick="() => PickAsync(g)">Choose</button></li>
+            }
+        </ul>
+    }
+    @if (Hint is not null)
+    {
+        <div class="hint">@Hint</div>
+    }
+</div>
+
+@code {
+    private readonly string _id = "g" + Guid.NewGuid().ToString("N")[..8];
+    private string _text = "";
+    private bool _busy;
+    private string? _error;
+    private IReadOnlyList<DirectoryGroup>? _results;
+
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public bool AllowNone { get; set; }
+    [Parameter] public Guid? GroupId { get; set; }
+    [Parameter] public string? GroupName { get; set; }
+    [Parameter] public EventCallback<DirectoryGroup?> Changed { get; set; }
+
+    private async Task SearchAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            _results = await Cloud.SearchGroupsAsync(_text);
+        }
+        catch (CloudException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task PickAsync(DirectoryGroup group)
+    {
+        _results = null;
+        _text = "";
+        await Changed.InvokeAsync(group);
+    }
+
+    private Task ClearAsync() => Changed.InvokeAsync(null);
+}

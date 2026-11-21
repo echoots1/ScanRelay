@@ -13,7 +13,7 @@ public class CloudTests
         var app = await env.ConnectAsync(consent: false);
 
         Assert.Equal("ScanRelay", app.DisplayName);
-        Assert.Equal(["https://localhost:8443/signin-oidc"], app.RedirectUris);
+        Assert.Equal(["https://scanserver.example:8443/signin-oidc", "https://localhost:8443/signin-oidc"], app.RedirectUris);
         Assert.Single(app.Certificates);
         Assert.Equal(4, app.RequestedRoleIds.Count);
         Assert.True(app.HasServicePrincipal);
@@ -34,7 +34,7 @@ public class CloudTests
 
         Assert.Same(first, second);
         Assert.Single(env.State.Applications);
-        Assert.Equal(["https://old-server.example/signin-oidc", "https://localhost:8443/signin-oidc"], second.RedirectUris);
+        Assert.Equal(["https://old-server.example/signin-oidc", "https://scanserver.example:8443/signin-oidc", "https://localhost:8443/signin-oidc"], second.RedirectUris);
         Assert.Single(second.Certificates);
     }
 
