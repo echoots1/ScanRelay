@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using ScanRelay.Core.Alerts;
 using ScanRelay.Core.Audit;
 using ScanRelay.Core.Cloud;
 using ScanRelay.Core.Data;
 using ScanRelay.Core.Install;
+using ScanRelay.Core.Jobs;
 using ScanRelay.Core.Security;
 using ScanRelay.Core.Settings;
 
@@ -43,6 +45,9 @@ public static class ServiceRegistration
         services.TryAddSingleton<ICloud, GraphCloud>();
         services.AddSingleton<DeviceCodeFlow>();
         services.AddSingleton<AppRegistration>();
+        services.AddSingleton<AlertService>();
+        services.AddSingleton<JobPipeline>();
+        services.AddSingleton<Retention>();
         return services;
     }
 
