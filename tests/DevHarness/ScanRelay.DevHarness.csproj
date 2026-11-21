@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Service\ScanRelay.Service.csproj" />
+    <ProjectReference Include="..\MockCloud\ScanRelay.MockCloud.csproj" />
+    <ProjectReference Include="..\MockDevices\ScanRelay.MockDevices.csproj" />
+    <ProjectReference Include="..\..\modules\scanrelay\sample\ScanRelay.Modules.Sample.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

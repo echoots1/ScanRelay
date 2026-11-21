@@ -42,3 +42,6 @@ Thumbs.db
 /data/
 /src/Service/data/
 design.db
+
+# Tooling
+/.claude/
