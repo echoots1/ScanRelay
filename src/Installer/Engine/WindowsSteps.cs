@@ -636,12 +636,24 @@ internal static class WindowsSteps
         // machine store. The password only guards the bytes inside this method.
         var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var pfx = made.Export(X509ContentType.Pfx, password);
+        var keyFilesBefore = ListKeyFiles();
         var certificate = X509CertificateLoader.LoadPkcs12(pfx, password, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
         certificate.FriendlyName = friendlyName;
-        using var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
-        store.Open(OpenFlags.ReadWrite);
-        store.Add(certificate);
+        using (var store = new X509Store(StoreName.My, StoreLocation.LocalMachine))
+        {
+            store.Open(OpenFlags.ReadWrite);
+            store.Add(certificate);
+        }
+
         log.Line($"Created the certificate {subject} ({friendlyName}), thumbprint {certificate.Thumbprint}, valid until {certificate.NotAfter:yyyy-MM-dd}, in the machine store. Its key cannot be exported.");
+
+        // If Windows will not name the key's file, it is the one file that appeared while the key was being stored.
+        var appeared = ListKeyFiles().Except(keyFilesBefore, StringComparer.OrdinalIgnoreCase).ToList();
+        if (!GrantKeyRead(log, certificate, appeared.Count == 1 ? appeared[0] : null))
+        {
+            throw new SetupException($"Setup created the certificate {certificate.Thumbprint} but could not find its private key file under {CryptoFolder}, so it could not let the service read it.");
+        }
+
         return certificate;
     }
 
@@ -678,9 +690,9 @@ internal static class WindowsSteps
     }
 
     /// <summary>Lets the service use a certificate's private key. Returns false when the key is not a file setup can find.</summary>
-    public static bool GrantKeyRead(SetupLog log, X509Certificate2 certificate)
+    public static bool GrantKeyRead(SetupLog log, X509Certificate2 certificate, string? knownKeyFile = null)
     {
-        var keyFile = FindKeyFile(certificate);
+        var keyFile = FindKeyFile(certificate) ?? knownKeyFile;
         if (keyFile is null) return false;
         var info = new FileInfo(keyFile);
         var security = info.GetAccessControl(AccessControlSections.Access);
@@ -715,11 +727,17 @@ internal static class WindowsSteps
         }
 
         if (string.IsNullOrEmpty(unique)) return null;
-        var crypto = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Microsoft", "Crypto");
-        return new[] { "Keys", @"RSA\MachineKeys", "SystemKeys", @"DSS\MachineKeys" }
-            .Select(folder => Path.Combine(crypto, folder, unique))
-            .FirstOrDefault(File.Exists);
+        return KeyFolders.Select(folder => Path.Combine(CryptoFolder, folder, unique)).FirstOrDefault(File.Exists);
     }
+
+    /// <summary>Where Windows keeps the private keys of machine certificates.</summary>
+    private static string CryptoFolder =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Microsoft", "Crypto");
+
+    private static readonly string[] KeyFolders = ["Keys", @"RSA\MachineKeys", "SystemKeys", @"DSS\MachineKeys"];
+
+    private static List<string> ListKeyFiles() =>
+        [.. KeyFolders.Select(folder => Path.Combine(CryptoFolder, folder)).Where(Directory.Exists).SelectMany(Directory.EnumerateFiles)];
 
     // ---- Firewall ----
 

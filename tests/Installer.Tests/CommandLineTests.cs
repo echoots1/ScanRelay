@@ -79,6 +79,15 @@ public class CommandLineTests
     }
 
     [Fact]
+    public void Quiet_is_honoured_even_when_something_else_is_wrong()
+    {
+        // Otherwise an automated run with a typo would sit behind a message box nobody can see.
+        var line = CommandLine.Parse(["/frobnicate", "/quiet"]);
+        Assert.True(line.Quiet);
+        Assert.Contains("/frobnicate", line.Error);
+    }
+
+    [Fact]
     public void Help_is_recognised()
     {
         Assert.True(CommandLine.Parse(["/?"]).Help);

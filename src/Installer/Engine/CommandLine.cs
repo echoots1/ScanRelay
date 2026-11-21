@@ -33,7 +33,8 @@ public sealed record CommandLine(SetupMode Mode, bool Quiet, string? AnswersFile
         string? answers = null;
         string? error = null;
 
-        for (var i = 0; i < args.Count && error is null; i++)
+        // Every argument is read even after a mistake, so /quiet is honoured and the mistake goes to the console, not a window.
+        for (var i = 0; i < args.Count; i++)
         {
             var arg = args[i];
             var isSwitch = arg.StartsWith('/') || arg.StartsWith('-');
@@ -43,25 +44,25 @@ public sealed record CommandLine(SetupMode Mode, bool Quiet, string? AnswersFile
                     quiet = true;
                     break;
                 case "modify":
-                    if (mode == SetupMode.Uninstall) error = "/modify and /uninstall cannot be used together.";
+                    if (mode == SetupMode.Uninstall) error ??= "/modify and /uninstall cannot be used together.";
                     mode = SetupMode.Modify;
                     break;
                 case "uninstall":
-                    if (mode == SetupMode.Modify) error = "/modify and /uninstall cannot be used together.";
+                    if (mode == SetupMode.Modify) error ??= "/modify and /uninstall cannot be used together.";
                     mode = SetupMode.Uninstall;
                     break;
                 case "keepdata":
                     keepData = true;
                     break;
                 case "answers":
-                    if (i + 1 >= args.Count || string.IsNullOrWhiteSpace(args[i + 1])) error = "/answers needs the path of a JSON file after it.";
+                    if (i + 1 >= args.Count || string.IsNullOrWhiteSpace(args[i + 1]) || args[i + 1].StartsWith('/')) error ??= "/answers needs the path of a JSON file after it.";
                     else answers = args[++i];
                     break;
                 case "?" or "h" or "help":
                     help = true;
                     break;
                 default:
-                    error = $"\"{arg}\" is not something setup understands.";
+                    error ??= $"\"{arg}\" is not something setup understands.";
                     break;
             }
         }

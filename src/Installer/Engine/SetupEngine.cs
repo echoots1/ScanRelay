@@ -28,6 +28,9 @@ public sealed class SetupEnvironment
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ScanRelay-setup.log");
 }
 
+/// <summary>A certificate already on the server that could serve the admin screen.</summary>
+public sealed record CertificateChoice(string Subject, DateTime Expires, string Thumbprint);
+
 /// <param name="Warnings">Things that did not stop setup but that the admin should read.</param>
 /// <param name="LocalUrl">Where the first-run screen is, on the server itself.</param>
 public sealed record SetupResult(IReadOnlyList<string> Warnings, string LocalUrl);
@@ -231,6 +234,37 @@ public sealed class SetupEngine(SetupEnvironment environment)
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             throw new ModuleException("GitHub did not answer in time.");
+        }
+    }
+
+    /// <summary>The certificates an admin could pick for the admin screen: those in the machine store with a private key.</summary>
+    [SupportedOSPlatform("windows")]
+    public static IReadOnlyList<CertificateChoice> ListWebCertificates()
+    {
+        var choices = new List<CertificateChoice>();
+        foreach (var certificate in WindowsSteps.ListWebCertificateChoices())
+        {
+            using (certificate)
+            {
+                var subject = certificate.GetNameInfo(System.Security.Cryptography.X509Certificates.X509NameType.SimpleName, forIssuer: false);
+                choices.Add(new CertificateChoice(string.IsNullOrEmpty(subject) ? certificate.Subject : subject, certificate.NotAfter, certificate.Thumbprint));
+            }
+        }
+
+        return [.. choices.OrderBy(c => c.Subject, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>The modules in an existing install's program folder. Empty when the record cannot be read.</summary>
+    public static IReadOnlyList<InstalledModule> InstalledModules(InstalledState? existing)
+    {
+        if (existing is null) return [];
+        try
+        {
+            return new ModuleStore(Path.Combine(existing.Answers.InstallFolder, "Modules"), TrustedKeys.BuiltIn()).Read();
+        }
+        catch (ModuleException)
+        {
+            return [];
         }
     }
 
@@ -476,11 +510,11 @@ public sealed class SetupEngine(SetupEnvironment environment)
         }
 
         using var made = WindowsSteps.AddSelfSigned(log, "CN=ScanRelay Graph", now, null, InstalledState.GraphCertFriendlyName);
-        RequireKeyAccess(log, made);
-        if (current is not null)
+        if (current is not null) WindowsSteps.RemoveCertificate(log, current.Thumbprint);
+        if (!string.IsNullOrWhiteSpace(currentThumbprint))
         {
-            WindowsSteps.RemoveCertificate(log, current.Thumbprint);
-            log.Warn("The Graph certificate was replaced. ScanRelay cannot sign in to Microsoft 365 until the new certificate is uploaded: open the admin screen and follow Settings.");
+            log.Warn((current is null ? $"The Graph certificate {currentThumbprint} was no longer in the certificate store, so a new one was made. " : "The Graph certificate was replaced. ")
+                + "ScanRelay cannot sign in to Microsoft 365 until the new certificate is uploaded: open the admin screen and follow Settings.");
         }
 
         return made.Thumbprint;
@@ -528,7 +562,6 @@ public sealed class SetupEngine(SetupEnvironment environment)
         }
 
         using var made = WindowsSteps.AddSelfSigned(log, $"CN={a.HostName}", now, names, InstalledState.WebCertFriendlyName);
-        RequireKeyAccess(log, made);
         if (previousIsOurs) WindowsSteps.RemoveCertificate(log, previous!.Thumbprint);
         return (made.Thumbprint, true);
     }
@@ -588,6 +621,13 @@ public sealed class SetupEngine(SetupEnvironment environment)
             if (state.WebCertCreatedBySetup || web.FriendlyName == InstalledState.WebCertFriendlyName) WindowsSteps.RemoveCertificate(log, webThumbprint);
             else log.Line($"The web certificate {web.Thumbprint} was chosen by an admin, not made by setup, so it was left in the certificate store.");
         });
+        if (failures.Count > 0)
+        {
+            // The install records say what is ScanRelay's. They stay until everything they name is gone, so uninstall can be run again.
+            log.Line("Something above could not be removed, so the program files, the data folder and the entry in Windows installed apps were left in place.");
+            throw new SetupException("ScanRelay was not fully removed. " + string.Join(" ", failures) + " Put that right and run the uninstall again.");
+        }
+
         Step(5, () => WindowsSteps.UnregisterInstalledApp(log));
         Step(6, () => WindowsSteps.DeleteFolder(log, a.InstallFolder, setupExe));
         Step(7, () =>
