@@ -22,6 +22,29 @@ that depends on it.
 | G8 | **Two-second-apart scans, same name.** Covered by the numbered suffix, but a re-run of a job must not create a second copy. | Re-run after a timeout whose upload did in fact succeed would duplicate. | Record the OneDrive item ID on the job; on re-run check for it first. | M2 |
 | G9 | **Removing a person "deletes their folder".** The spec's IT section reads as if a OneDrive folder is deleted. | Deleting someone's scans in OneDrive would be a surprise. | Read it as the server `Inbox` folder only. OneDrive is never deleted from. Confirm. | M3 |
 
+### Decided: sign-in during first run
+
+G1 and G2 are settled as follows.
+
+- **Configuring needs no sign-in.** Until setup is finished, the admin screen
+  opens straight into the first-run steps with no sign-in at all. There is no
+  setup password and no one-time code.
+- **The one sign-in is at the app registration step.** An Entra admin signs in
+  once, there, so setup can create the registration. Browser sign-in on the
+  server is offered first, link and code second, by-hand values third. It uses
+  the Microsoft Graph Command Line Tools public client. Setup keeps nothing
+  from that sign-in.
+- **What protects the open screen** is the spec's existing rule: until sign-in
+  is set up, the screen answers only on the server itself. Anyone who can
+  reach it is already logged on to the server.
+- **The open window closes for good** once the admin group is chosen and one
+  member of it has signed in successfully. From then on every page needs
+  Entra sign-in. Requiring that first successful sign-in before closing the
+  window means a wrong group cannot lock everyone out.
+- **Getting back in** if sign-in later breaks (group deleted, registration
+  removed) is an installer Repair, which needs administrator rights on the
+  server and reopens the local-only setup screen.
+
 ## 2. Technical decisions
 
 | # | Decision | Choice | Notes |
@@ -58,14 +81,14 @@ we think the printer wants. Only a real machine proves the printer agrees.
 These follow the spec's build order. Each ends in something usable.
 
 ### M0. Foundations
-- Settle G1 to G4, D3, the licence and the name.
+- Settle G3, G4, D3, the licence and the name. (G1 and G2 are decided.)
 - Solution skeleton, CI that builds and runs tests on every change, secret scanning on.
 - Database schema, first draft: settings, people, printers, jobs, runs, pushes, printer entries, audit log.
 
 ### M1. Installer and core service
 - Installer: folders, local printer account, hidden share, rights, both certificates, service registration, firewall rule, summary before changes, uninstall.
-- Service host, HTTPS, localhost-only until sign-in is set up.
-- First run: Entra connection (create or by hand), consent wait, health check, admin group.
+- Service host, HTTPS, localhost-only and open without sign-in until setup is finished.
+- First run: Entra connection (one admin sign-in to create the registration, or by hand), consent wait, health check, admin group, first admin sign-in closes the open window.
 - Admin sign-in with Admin and Helpdesk roles. Audit log.
 - Settings page, export and import without secrets.
 
