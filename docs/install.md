@@ -141,11 +141,11 @@ address book entry per person:
 
 - **Path:** `\\<server>\<share name>\<the person's Entra user ID>`
 - **User:** `<server>\<printer account name>`
-- **Password:** the printer account's password. The installer generated it;
-  set a new one with Repair if you need to type it into printers by hand.
+- **Password:** the printer account's password. An Admin can show it under
+  Settings, Printer account. Showing it is written to the audit log.
 
-The People page lists who is on the list. The Runs page shows who joined and
-left at each sync.
+The People page lists who is on the list, with each person's folder path. The
+Runs page shows who joined and left at each sync.
 
 ## Day to day
 

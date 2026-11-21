@@ -125,6 +125,20 @@
         <button disabled="@Busy" @onclick="() => DoAsync(() => Task.CompletedTask)">Undo changes</button>
     </div>
 
+    <h2>Printer account</h2>
+    <div class="panel">
+        <dl class="kv">
+            <dt>Share</dt><dd><span class="code">\\@(Install.ServerName ?? Environment.MachineName)\@(Install.ShareName ?? "(not set)")</span></dd>
+            <dt>Account</dt><dd><span class="code">@(Install.ServerName ?? Environment.MachineName)\@(Install.PrinterAccount ?? "(not set)")</span></dd>
+            <dt>Password</dt>
+            <dd>
+                @if (_printerPassword is null) { <button class="small" disabled="@Busy" @onclick="ShowPasswordAsync">Show</button> }
+                else { <span class="code">@_printerPassword</span> <button class="small" @onclick="() => _printerPassword = null">Hide</button> }
+            </dd>
+        </dl>
+        <p class="hint">Printers use this account to write scans. It can create and write files in the share and nothing else: it cannot list, read or delete, and it cannot sign in to Windows. Modules put it on printers for you. You only need the password when keeping an address book by hand. Showing it is written to the audit log. The name, the share and the password are changed by running the installer.</p>
+    </div>
+
     <h2>Export and import</h2>
     <div class="panel">
         <p>One JSON file with every setting, for backup or for moving to another server. Secrets are left out.</p>
@@ -185,6 +199,17 @@
             await Review.ClearAsync();
         },
         "Settings saved.");
+
+    private string? _printerPassword;
+
+    private Task ShowPasswordAsync() => DoAsync(async () =>
+    {
+        var password = PrinterAccountSecret.Read(Install);
+        if (password.Length == 0) return "The installer has not stored a password for the printer account. Run the installer's Repair.";
+        await Audit.WriteAsync(Actor, "Printer account password shown");
+        _printerPassword = password;
+        return null;
+    });
 
     private Task RunHealthAsync() => DoAsync(async () => { _health = await Health.RunAsync(); });
 

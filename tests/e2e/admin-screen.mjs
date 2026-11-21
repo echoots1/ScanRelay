@@ -183,6 +183,8 @@ await page.getByRole('button', { name: 'Save settings' }).click();
 await page.getByText('Sync interval must be between').waitFor();
 await page.getByRole('button', { name: 'Run the health check' }).click();
 await page.getByText('Signed in to Example Organisation').waitFor();
+await page.locator('dd', { has: page.getByRole('button', { name: 'Show' }) }).getByRole('button').click();
+await page.getByText('share-password').waitFor();
 await shot(page, 'settings');
 log('settings save, refuse a bad value, and run the health check');
 
@@ -205,6 +207,7 @@ await shot(page, 'modules');
 await page.getByRole('link', { name: 'Audit log' }).click();
 await page.getByText('Setup finished').waitFor();
 await page.getByText('Printer added').waitFor();
+await page.getByText('Printer account password shown').waitFor();
 await shot(page, 'audit');
 await page.getByRole('link', { name: 'Dashboard' }).click();
 await page.getByRole('heading', { name: 'Recent errors' }).waitFor();

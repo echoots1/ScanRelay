@@ -4,6 +4,7 @@
 @inject ICloud Cloud
 @inject DirectorySync Sync
 @inject AuditLog Audit
+@inject InstallConfig Install
 
 <PageTitle>People · ScanRelay</PageTitle>
 <h1>People</h1>
@@ -50,7 +51,8 @@
             {
                 var p = row.Person;
                 <tr>
-                    <td>@p.DisplayName<div class="muted small">@p.UserPrincipalName</div></td>
+                    <td>@p.DisplayName<div class="muted small">@p.UserPrincipalName</div>
+                        @if (row.Active) { <div class="small"><span class="code">\\@(Install.ServerName ?? Environment.MachineName)\@Install.ShareName\@p.Id</span></div> }</td>
                     <td>
                         <Badge Text="@(p.Source == PersonSource.Manual ? "Added by hand" : "Group")" Kind="@(p.Source == PersonSource.Manual ? "warn" : "plain")" />
                         @if (p.Excluded) { <Badge Text="Excluded" Kind="bad" /> }
