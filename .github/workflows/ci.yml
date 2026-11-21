@@ -45,6 +45,39 @@ jobs:
           path: publish/service
           retention-days: 14
 
+  browser:
+    name: Admin screen in a browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the browser
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+      - name: Build
+        run: dotnet build tests/DevHarness --configuration Release
+      - name: Start the app with a mock Microsoft 365 and a mock printer
+        run: |
+          nohup dotnet run --project tests/DevHarness --configuration Release --no-build > harness.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:5080/health && break; sleep 1; done
+      - name: Walk through setup, a sync, a scan, a failure and the roles
+        run: node tests/e2e/admin-screen.mjs screenshots
+      - name: Keep the screenshots and the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-screen
+          path: |
+            screenshots
+            harness.log
+          retention-days: 14
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

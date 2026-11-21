@@ -45,3 +45,7 @@ design.db
 
 # Tooling
 /.claude/
+
+# Browser test
+node_modules/
+package-lock.json
