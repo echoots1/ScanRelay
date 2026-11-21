@@ -139,7 +139,7 @@
     <h2>4. Choose the mailbox alert emails are sent from</h2>
     <div class="panel">
         <div class="field"><label for="a-sender">Alert sender</label>
-            <input id="a-sender" type="text" @bind="_sender" placeholder="alerts@your-organisation.example" />
+            <input id="a-sender" type="text" @bind="_sender" @bind:event="oninput" placeholder="alerts@your-organisation.example" />
             <div class="hint">A mailbox in this tenant, such as a shared mailbox. Alert emails go to the members of the admin group. You can leave this empty and set it later in Settings; failures still show on the Dashboard.</div></div>
         <div class="toolbar">
             <button class="primary" disabled="@Busy" @onclick="SaveSenderAsync">@(string.IsNullOrWhiteSpace(_sender) ? "Skip for now" : "Save")</button>

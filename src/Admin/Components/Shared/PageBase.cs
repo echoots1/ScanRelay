@@ -56,7 +56,7 @@ public abstract class PageBase : ComponentBase, IDisposable
         try
         {
             var problem = await action();
-            if (problem is null) Notice = success;
+            if (problem is null) Notice = success ?? Notice;
             else Error = problem;
         }
         catch (Exception e) when (e is CloudException or SettingsException or ModuleException or DbUpdateException or IOException or InvalidOperationException)
