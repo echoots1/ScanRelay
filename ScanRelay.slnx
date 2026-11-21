@@ -7,6 +7,8 @@
   <Folder Name="/src/">
     <Project Path="src/Admin/ScanRelay.Admin.csproj" />
     <Project Path="src/Core/ScanRelay.Core.csproj" />
+    <Project Path="src/Installer/Engine/ScanRelay.Installer.Engine.csproj" />
+    <Project Path="src/Installer/ScanRelay.Installer.csproj" />
     <Project Path="src/ModuleSdk/ScanRelay.ModuleSdk.csproj" />
     <Project Path="src/Service/ScanRelay.Service.csproj" />
   </Folder>
@@ -15,6 +17,7 @@
   <Folder Name="/src/Service/" />
   <Folder Name="/tests/">
     <Project Path="tests/Core.Tests/ScanRelay.Core.Tests.csproj" />
+    <Project Path="tests/Installer.Tests/ScanRelay.Installer.Tests.csproj" />
     <Project Path="tests/MockCloud/ScanRelay.MockCloud.csproj" />
     <Project Path="tests/Service.Tests/ScanRelay.Service.Tests.csproj" />
   </Folder>
