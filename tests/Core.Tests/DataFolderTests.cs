@@ -14,7 +14,7 @@ public class DataFolderTests
             Assert.True(Directory.Exists(folder.Inbox));
             Assert.True(Directory.Exists(folder.Store));
             Assert.True(Directory.Exists(folder.Logs));
-            foreach (var path in new[] { folder.Inbox, folder.Store, folder.Logs, folder.Database })
+            foreach (var path in new[] { folder.Inbox, folder.Store, folder.Logs, folder.Keys, folder.Database })
             {
                 Assert.Equal(folder.Root, Path.GetDirectoryName(path));
             }

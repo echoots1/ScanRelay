@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Service\ScanRelay.Service.csproj" />
+    <ProjectReference Include="..\Core.Tests\ScanRelay.Core.Tests.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

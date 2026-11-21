@@ -7,6 +7,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Core.Tests/ScanRelay.Core.Tests.csproj" />
+    <Project Path="tests/MockCloud/ScanRelay.MockCloud.csproj" />
     <Project Path="tests/Service.Tests/ScanRelay.Service.Tests.csproj" />
   </Folder>
 </Solution>

@@ -22,6 +22,9 @@ public sealed class DataFolder
 
     public string Logs => Path.Combine(Root, "Logs");
 
+    /// <summary>Keys that protect stored secrets.</summary>
+    public string Keys => Path.Combine(Root, "Keys");
+
     public string Database => Path.Combine(Root, "scanrelay.db");
 
     /// <summary>Creates any folder that is missing. The installer normally creates them, with the right access.</summary>
@@ -30,5 +33,6 @@ public sealed class DataFolder
         Directory.CreateDirectory(Inbox);
         Directory.CreateDirectory(Store);
         Directory.CreateDirectory(Logs);
+        Directory.CreateDirectory(Keys);
     }
 }
