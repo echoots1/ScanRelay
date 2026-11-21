@@ -46,6 +46,12 @@ public sealed partial class MockCloudServer : IAsyncDisposable
         app.Map("/login/{**rest}", server.HandleLoginAsync);
         app.Map("/graph/v1.0/{**rest}", server.HandleGraphAsync);
         app.Map("/upload/{session}", server.HandleUploadSessionAsync);
+        app.MapGet("/github-api/repos/{owner}/{repo}/releases/latest", (string owner, string repo) =>
+            state.Release is { } r
+                ? Results.Json(new { tag_name = r.Tag, name = r.Name, body = r.Body, html_url = $"https://github.example/{owner}/{repo}/releases/tag/{r.Tag}" })
+                : Results.NotFound());
+        app.MapGet("/github/{owner}/{repo}/releases/latest/download/{asset}", (string asset) =>
+            state.ReleaseAssets.TryGetValue(asset, out var bytes) ? Results.Bytes(bytes) : Results.NotFound());
         await app.StartAsync();
         server.BaseUrl = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First().TrimEnd('/');
         return server;

@@ -60,6 +60,12 @@ public sealed class MockCloudState
     public ConcurrentDictionary<string, bool> DeviceCodes { get; } = new();
     public ConcurrentDictionary<string, (Guid User, string Nonce, string ClientId)> AuthCodes { get; } = new();
 
+    /// <summary>The latest release on the mock GitHub: its tag, title and notes. Null means no releases.</summary>
+    public (string Tag, string Name, string Body)? Release { get; set; }
+
+    /// <summary>The files attached to the latest release.</summary>
+    public ConcurrentDictionary<string, byte[]> ReleaseAssets { get; } = new();
+
     /// <summary>The person the next device code or browser sign-in signs in as.</summary>
     public Guid? SignInAs { get; set; }
 

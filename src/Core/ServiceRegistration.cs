@@ -6,6 +6,7 @@ using ScanRelay.Core.Alerts;
 using ScanRelay.Core.Audit;
 using ScanRelay.Core.Cloud;
 using ScanRelay.Core.Data;
+using ScanRelay.Core.Health;
 using ScanRelay.Core.Install;
 using ScanRelay.Core.Jobs;
 using ScanRelay.Core.Modules;
@@ -13,6 +14,7 @@ using ScanRelay.Core.Printers;
 using ScanRelay.Core.Security;
 using ScanRelay.Core.Settings;
 using ScanRelay.Core.Sync;
+using ScanRelay.Core.Updates;
 
 namespace ScanRelay.Core;
 
@@ -55,6 +57,10 @@ public static class ServiceRegistration
         services.AddSingleton<ModuleHost>();
         services.AddSingleton<PrinterService>();
         services.AddSingleton<DirectorySync>();
+        services.AddSingleton<ModuleCatalog>();
+        services.AddSingleton<UpdateChecker>();
+        services.AddSingleton<HealthCheck>();
+        services.TryAddSingleton<IInstalledPrinters, InstalledPrinters>();
         return services;
     }
 

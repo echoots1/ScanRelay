@@ -23,7 +23,7 @@ public sealed class ModuleHost(InstallConfig install, TrustedKeys keys, HttpClie
     private IReadOnlyList<LoadedModule>? _modules;
 
     public static Version AppVersion { get; } =
-        (Assembly.GetEntryAssembly() ?? typeof(ModuleHost).Assembly).GetName().Version is { } v ? new Version(v.Major, v.Minor, Math.Max(0, v.Build)) : new Version(0, 1, 0);
+        typeof(ModuleHost).Assembly.GetName().Version is { } v ? new Version(v.Major, v.Minor, Math.Max(0, v.Build)) : new Version(0, 1, 0);
 
     public IReadOnlyList<LoadedModule> Modules
     {
