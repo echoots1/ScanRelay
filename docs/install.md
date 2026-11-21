@@ -30,8 +30,9 @@ check it against `SHA256SUMS.txt`:
 Get-FileHash .\ScanRelaySetup-<version>.exe -Algorithm SHA256
 ```
 
-The installer is not signed yet, so Windows shows an unknown publisher
-warning. Run it as an administrator. It asks:
+The installer is one program, `ScanRelaySetup.exe`. It is not an MSI. It is
+not signed yet, so Windows shows an unknown publisher warning. Run it as an
+administrator. It asks:
 
 | Question | Default | Notes |
 |----------|---------|-------|
@@ -39,7 +40,7 @@ warning. Run it as an administrator. It asks:
 | Where to keep the data folder | `C:\ProgramData\ScanRelay` | A hidden location that staff never browse. Scans wait here for up to 7 days, so disk encryption on this volume is recommended. |
 | Address and port for the admin screen | This server's name, port 8443 | The address IT will type into a browser. |
 | Web certificate | Self-signed | Or pick one already on the server. See below. |
-| Printer account name | `scanrelay-printer` | A local account. The installer creates its password and stores it encrypted. |
+| Printer account name and share name | `scanrelay-printer`, `Scans$` | A local account. The installer creates its password and stores it encrypted. It refuses a name that already belongs to something else. |
 | Which printer modules to install | None | Ticked from the list on GitHub. A custom module can be added from a file. |
 | May the app check GitHub for updates | Yes | Can be changed later in Settings. |
 
@@ -174,8 +175,9 @@ Runs page shows who joined and left at each sync.
   are not lost: printers keep writing to the share while the service is
   stopped, and the waiting files are processed when it starts. Reinstalling
   the previous version restores the database backup.
-- **Uninstall:** removes the service, the share and the firewall rule, and
-  asks whether to keep the data folder.
+- **Uninstall:** removes the service, the share, the firewall rule, the
+  printer account and the certificates it made, and asks whether to keep the
+  data folder.
 
 ## When something is wrong
 

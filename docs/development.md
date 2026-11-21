@@ -86,3 +86,22 @@ dotnet ef migrations add <Name> --project src/Core -o Data/Migrations
 ```
 
 A test fails if the model and the migrations disagree.
+
+## The installer
+
+`src/Installer` is the window; `src/Installer/Engine` is everything it does,
+with no window code, so it can be tested. It only runs on Windows.
+
+For testing it has a silent mode, which the build pipeline uses on every
+change:
+
+```
+ScanRelaySetup.exe /quiet /answers answers.json
+ScanRelaySetup.exe /quiet /uninstall [/keepdata]
+```
+
+`tests/windows/Test-Install.ps1` installs, checks everything the installer
+promises, repairs and uninstalls. It creates and removes a local account, a
+share, a firewall rule and a service, so run it on a build machine or a test
+server only. `tests/windows/Capture-Wizard.ps1` saves a picture of each page
+of the wizard without installing anything.

@@ -106,7 +106,7 @@ These follow the spec's build order.
 | Milestone | State |
 |-----------|-------|
 | M0. Foundations | Built. |
-| M1. Installer and core service | Built. The service, first-run setup, sign-in with roles, audit log and Settings are tested. The installer is tested by a silent install on a Windows build machine; its screens have not been looked at by a person. |
+| M1. Installer and core service | Built. The service, first-run setup, sign-in with roles, audit log and Settings are tested. The installer passes a real install, repair and uninstall on a Windows build machine; its screens have not been looked at by a person. |
 | M2. Jobs | Built and tested: intake, upload, retries, retention, re-run, alerts, Jobs page, Dashboard. |
 | M3. People and sync | Built and tested: groups, manual people, exclusions, folders, preview, change guard, Runs and People pages. |
 | M4. Module system | Built and tested with the sample module and mock printer: SDK, packaging, signing, catalog, module host, Printers and Modules pages, update check, drift check. |
@@ -131,7 +131,8 @@ server.
 | Directory sync, change guard, drift check | Tests against the mocks | A real tenant with real group sizes. |
 | Module system | The sample module is packed, signed, installed, loaded and pushed to the mock printer in tests | Any real printer. |
 | Admin screen | A browser test walks through setup, a printer, a sync, a scan, a failure, the change guard and the Helpdesk role | Nobody has used it by hand. |
-| Installer | A silent install, check and uninstall on a Windows build machine | The wizard screens. Modify and Update through the screens. A real server with real policies. |
+| Installer | On every change a Windows Server build machine installs it silently and runs 56 checks: the service and its account, HTTPS, the setup gate, folder rights, both certificates, the printer account and its sign-in denials, the share, the firewall rule, Installed apps, a custom module loading, a repair that keeps the certificate and password, and a clean uninstall | The wizard screens: nobody has looked at them or clicked through them. Modify and Update through the screens. Moving folders. A real server with real policies. |
+| The share's rights | On the same build machine the test connects to the share as the printer account: writing a scan works; listing, reading back and deleting are refused; the service then picks the file up | A real printer. Many printers probe a folder before writing, and may need more than create and write. |
 | Alert emails | Tests check what is sent and to whom | Delivery through a real mailbox. |
 | Vendor modules | Not built | Everything. |
 
