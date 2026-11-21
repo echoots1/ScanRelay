@@ -77,7 +77,7 @@ jobs:
           name: installer
           path: |
             artifacts/installer/ScanRelaySetup.exe
-            C:/ProgramData/ScanRelay-setup.log
+            setup.log
           retention-days: 14
 
   browser:

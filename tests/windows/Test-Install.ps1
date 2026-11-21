@@ -128,8 +128,8 @@ Check "it is a member of no groups (found: $($groups.Name -join ', '))" { -not $
 secedit /export /cfg "$Root\secpol.cfg" /areas USER_RIGHTS | Out-Null
 $policy = Get-Content "$Root\secpol.cfg"
 $sid = $user.SID.Value
-Check "it is denied interactive sign-in" { ($policy | Where-Object { $_ -match "^SeDenyInteractiveLogonRight" }) -match [regex]::Escape($sid) }
-Check "it is denied Remote Desktop sign-in" { ($policy | Where-Object { $_ -match "^SeDenyRemoteInteractiveLogonRight" }) -match [regex]::Escape($sid) }
+Check "it is denied interactive sign-in" { $policy | Where-Object { $_ -match "^SeDenyInteractiveLogonRight" -and ($_ -match [regex]::Escape($sid) -or $_ -match "\b$account\b") } }
+Check "it is denied Remote Desktop sign-in" { $policy | Where-Object { $_ -match "^SeDenyRemoteInteractiveLogonRight" -and ($_ -match [regex]::Escape($sid) -or $_ -match "\b$account\b") } }
 $smb = Get-SmbShare -Name $share -ErrorAction SilentlyContinue
 Check "the hidden share exists and points at Inbox" { $smb -and $smb.Path -eq "$dataFolder\Inbox" }
 $shareAccess = Get-SmbShareAccess -Name $share
@@ -215,6 +215,7 @@ Check "both certificates are gone" { -not (Get-ChildItem Cert:\LocalMachine\My |
 Check "the data folder is gone" { -not (Test-Path $dataFolder) }
 Check "the program folder is gone" { -not (Test-Path $installFolder) }
 
+Copy-Item "$env:ProgramData\ScanRelay-setup.log" "setup.log" -ErrorAction SilentlyContinue
 Write-Host ""
 if ($failures.Count -gt 0) {
     Write-Host "$($failures.Count) of $checks checks failed:" -ForegroundColor Red
