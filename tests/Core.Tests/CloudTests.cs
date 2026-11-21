@@ -138,6 +138,36 @@ public class CloudTests
     }
 
     [Fact]
+    public async Task A_file_over_the_single_call_limit_is_uploaded_in_pieces()
+    {
+        await using var env = await TestEnvironment.StartAsync();
+        await env.ConnectAsync();
+        var user = env.State.AddUser("Sam Scanner");
+        var file = Path.Combine(env.Data.Root, "big.pdf");
+        var content = new byte[(320 * 1024 * 2) + 12345];
+        Random.Shared.NextBytes(content);
+        await File.WriteAllBytesAsync(file, content);
+
+        // The same client, with the limits brought down so a small file takes the large-file path.
+        var cloud = new GraphCloud(env.Get<HttpClient>(), env.Install, env.Get<AppTokenProvider>(), TimeProvider.System)
+        {
+            SingleCallLimit = 1000,
+            ChunkSize = 320 * 1024,
+        };
+        var target = new OneDriveTarget(true, ["Scans"], "Big", "pdf");
+
+        var first = await cloud.UploadAsync(user.Id, target, file);
+        var second = await cloud.UploadAsync(user.Id, target, file);
+
+        var files = env.State.Files(user, "Dokumente/Scans");
+        Assert.Equal(["Big (2).pdf", "Big.pdf"], files.Select(f => f.Name));
+        Assert.All(files, f => Assert.Equal(content, f.Content));
+        Assert.Equal("Big.pdf", first.Name);
+        Assert.Equal("Big (2).pdf", second.Name);
+        Assert.Contains(env.State.GraphRequests, r => r.Contains("createUploadSession"));
+    }
+
+    [Fact]
     public async Task Upload_can_go_to_a_folder_outside_documents()
     {
         await using var env = await TestEnvironment.StartAsync();

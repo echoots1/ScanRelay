@@ -10,6 +10,7 @@
     <Project Path="src/ModuleSdk/ScanRelay.ModuleSdk.csproj" />
     <Project Path="src/Service/ScanRelay.Service.csproj" />
   </Folder>
+  <Folder Name="/src/Core/" />
   <Folder Name="/src/ModuleSdk/" />
   <Folder Name="/src/Service/" />
   <Folder Name="/tests/">
@@ -23,5 +24,9 @@
   <Folder Name="/tests/MockCloud/" />
   <Folder Name="/tests/MockDevices/">
     <Project Path="tests/MockDevices/ScanRelay.MockDevices.csproj" />
+  </Folder>
+  <Folder Name="/tools/" />
+  <Folder Name="/tools/ModuleTool/">
+    <Project Path="tools/ModuleTool/ScanRelay.ModuleTool.csproj" />
   </Folder>
 </Solution>

@@ -35,10 +35,10 @@ public sealed record OneDriveTarget(bool UnderDocuments, IReadOnlyList<string> F
 public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenProvider tokens, TimeProvider time) : ICloud
 {
     /// <summary>Graph takes files up to this size in one call. Larger files use an upload session.</summary>
-    public const long SingleCallLimit = 250L * 1024 * 1024;
+    public long SingleCallLimit { get; init; } = 250L * 1024 * 1024;
 
     /// <summary>Upload session pieces must be a multiple of 320 KiB.</summary>
-    public const int ChunkSize = 320 * 1024 * 32;
+    public int ChunkSize { get; init; } = 320 * 1024 * 32;
 
     private const string UserFields = "id,displayName,userPrincipalName,accountEnabled,userType";
     private readonly GraphHttp _graph = new(http, install.Cloud.Graph, tokens.GetTokenAsync, time);
