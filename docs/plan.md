@@ -81,7 +81,7 @@ we think the printer wants. Only a real machine proves the printer agrees.
 These follow the spec's build order. Each ends in something usable.
 
 ### M0. Foundations
-- Settle G3, G4, D3, the licence and the name. (G1 and G2 are decided.)
+- Settle G3, G4, D3 and the name. (G1, G2 and the licence are decided.)
 - Solution skeleton, CI that builds and runs tests on every change, secret scanning on.
 - Database schema, first draft: settings, people, printers, jobs, runs, pushes, printer entries, audit log.
 
@@ -139,7 +139,7 @@ From the spec, with a recommendation where there is one.
 
 | Question | Recommendation | Needed by |
 |----------|----------------|-----------|
-| Licence: Apache 2.0 or MIT | Apache 2.0. Its `NOTICE` rule is the "credit is kept" requirement the spec asks for, and it carries a patent grant. | M0 |
+| Licence: Apache 2.0 or MIT | **Decided: Apache 2.0.** `LICENSE` and `NOTICE` are in the repo. | Done |
 | Final name for app and repo | — | M0, before anything is public |
 | Helpdesk role needed? | Keep it. It is cheap once roles exist and hard to add later. | M1 |
 | Accept tenant-wide `Files.ReadWrite.All`? | Yes, see G7. | M1 |

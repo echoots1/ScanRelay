@@ -33,5 +33,6 @@ Folders are created as each milestone needs them.
 
 ## Licence
 
-Not chosen yet (Apache 2.0 proposed, MIT the alternative). Until a `LICENSE`
-file is added, no licence is granted.
+[Apache License 2.0](LICENSE). Free for any use, including by businesses.
+Changes and redistribution are allowed as long as the credit in
+[NOTICE](NOTICE) is kept.
