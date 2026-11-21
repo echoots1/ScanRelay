@@ -203,10 +203,9 @@ Check "the scan from before the repair is still in Store" { (Get-ChildItem "$dat
 
 # -------------------------------------------------------------- uninstall
 Write-Host "`nUninstall"
-$installedSetup = "$installFolder\ScanRelaySetup.exe"
-$process = Start-Process -FilePath $installedSetup -ArgumentList @("/quiet", "/uninstall") -Wait -PassThru -NoNewWindow
-Check "the uninstaller finished without error (exit code $($process.ExitCode))" { $process.ExitCode -eq 0 }
-Start-Sleep -Seconds 5
+# Run from the copy outside the program folder, so the removal is finished when it returns.
+$exit = Run-Setup @("/quiet", "/uninstall")
+Check "the uninstaller finished without error (exit code $exit)" { $exit -eq 0 }
 Check "the service is gone" { -not (Get-Service $service -ErrorAction SilentlyContinue) }
 Check "the share is gone" { -not (Get-SmbShare -Name $share -ErrorAction SilentlyContinue) }
 Check "the printer account is gone" { -not (Get-LocalUser -Name $account -ErrorAction SilentlyContinue) }
@@ -214,7 +213,7 @@ Check "the firewall rule is gone" { -not (Get-NetFirewallRule -DisplayName "Scan
 Check "ScanRelay is no longer under Installed apps" { -not (Test-Path $uninstallKey) }
 Check "both certificates are gone" { -not (Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -in @($install.GraphCertThumbprint, $install.WebCertThumbprint) }) }
 Check "the data folder is gone" { -not (Test-Path $dataFolder) }
-Check "the program files are gone" { -not (Test-Path "$installFolder\ScanRelay.Service.exe") }
+Check "the program folder is gone" { -not (Test-Path $installFolder) }
 
 Write-Host ""
 if ($failures.Count -gt 0) {

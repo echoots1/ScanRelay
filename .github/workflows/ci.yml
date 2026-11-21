@@ -45,6 +45,41 @@ jobs:
           path: publish/service
           retention-days: 14
 
+  install:
+    name: Install, check and uninstall on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build the installer with the service inside it
+        shell: pwsh
+        run: |
+          dotnet publish src/Service --configuration Release --runtime win-x64 --self-contained --output artifacts/service
+          Compress-Archive -Path artifacts/service/* -DestinationPath artifacts/payload.zip
+          $payload = (Resolve-Path artifacts/payload.zip).Path
+          dotnet publish src/Installer/ScanRelay.Installer.csproj --configuration Release --output artifacts/installer -p:PayloadZip="$payload"
+          if ($LASTEXITCODE -ne 0) { throw "Publishing the installer failed." }
+      - name: Package the sample module as a custom module
+        shell: pwsh
+        run: |
+          dotnet publish modules/scanrelay/sample --configuration Release --output artifacts/sample
+          dotnet run --project tools/ModuleTool --configuration Release -- pack artifacts/sample artifacts/modules
+          if ($LASTEXITCODE -ne 0) { throw "Packing the sample module failed." }
+      - name: Install silently, check everything the installer promises, repair, uninstall
+        shell: pwsh
+        run: pwsh tests/windows/Test-Install.ps1 -Setup artifacts/installer/ScanRelaySetup.exe -Module (Get-ChildItem artifacts/modules/*.srmod).FullName
+      - name: Keep the installer and its log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: |
+            artifacts/installer/ScanRelaySetup.exe
+            C:/ProgramData/ScanRelay-setup.log
+          retention-days: 14
+
   browser:
     name: Admin screen in a browser
     runs-on: ubuntu-latest
