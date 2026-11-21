@@ -70,6 +70,11 @@ jobs:
       - name: Install silently, check everything the installer promises, repair, uninstall
         shell: pwsh
         run: pwsh tests/windows/Test-Install.ps1 -Setup artifacts/installer/ScanRelaySetup.exe -Module (Get-ChildItem artifacts/modules/*.srmod).FullName
+      - name: Take pictures of the installer's screens
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh tests/windows/Capture-Wizard.ps1 -Setup artifacts/installer/ScanRelaySetup.exe -Out wizard
       - name: Keep the installer and its log
         if: always()
         uses: actions/upload-artifact@v4
@@ -78,6 +83,7 @@ jobs:
           path: |
             artifacts/installer/ScanRelaySetup.exe
             setup.log
+            wizard
           retention-days: 14
 
   browser:
