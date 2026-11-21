@@ -1,0 +1,27 @@
+# The sample module. It drives the mock printer in /tests/MockDevices and is the
+# starting point for writing a real one. See docs/writing-a-module.md.
+id: scanrelay-sample
+version: 1.0.0
+vendor: ScanRelay
+family: Mock printer
+models: [MockPrinter 1000]
+windows_names: ["ScanRelay MockPrinter*"]   # model names as Windows reports them
+status: official                            # official | custom
+sdk_version: 1
+app_versions:
+  min: 0.1.0
+adapter: ScanRelay.Modules.Sample.dll
+unofficial: false
+method: Uses the mock printer's own documented interface.
+scan:
+  protocols: [smb, ftp]
+  smb_versions: ["2.0", "3.0"]
+  share_rights: [create, write]
+address_book:
+  max_entries: 200
+  managed_range: [900, 999]
+  one_touch: true
+prerequisites: []
+tested_firmware: ["1.0"]
+options:
+  port: "80"

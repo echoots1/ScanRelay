@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The service shares its own copy of the SDK with every module, so it is not packaged. -->
+    <ProjectReference Include="..\..\..\src\ModuleSdk\ScanRelay.ModuleSdk.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="module.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

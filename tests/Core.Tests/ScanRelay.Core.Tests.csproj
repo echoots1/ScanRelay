@@ -11,6 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\ScanRelay.Core.csproj" />
     <ProjectReference Include="..\MockCloud\ScanRelay.MockCloud.csproj" />
+    <ProjectReference Include="..\MockDevices\ScanRelay.MockDevices.csproj" />
+    <!-- Built first so the tests can package it, but never loaded directly. -->
+    <ProjectReference Include="..\..\modules\scanrelay\sample\ScanRelay.Modules.Sample.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

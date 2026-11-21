@@ -31,12 +31,13 @@ public sealed class TestEnvironment : IAsyncDisposable
     public ICloud Graph => Services.GetRequiredService<ICloud>();
     public T Get<T>() where T : notnull => Services.GetRequiredService<T>();
 
-    public static async Task<TestEnvironment> StartAsync(Action<IServiceCollection>? configure = null, TimeProvider? time = null)
+    public static async Task<TestEnvironment> StartAsync(Action<IServiceCollection>? configure = null, TimeProvider? time = null, Action<InstallConfig>? prepare = null)
     {
         var cloud = await MockCloudServer.StartAsync();
         var data = new DataFolder(Path.Combine(Path.GetTempPath(), "scanrelay-test-" + Guid.NewGuid().ToString("N")));
         data.EnsureCreated();
         var install = NewInstallConfig(cloud, data);
+        prepare?.Invoke(install);
         var services = new ServiceCollection();
         services.AddLogging();
         if (time is not null) services.AddSingleton(time);

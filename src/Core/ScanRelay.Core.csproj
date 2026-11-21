@@ -3,5 +3,14 @@
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ModuleSdk\ScanRelay.ModuleSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The project's public signing key. Official modules and the catalog are checked against it. -->
+    <EmbeddedResource Include="..\..\catalog\signing-key.pub.pem" LogicalName="ScanRelay.Core.signing-key.pub.pem" Condition="Exists('..\..\catalog\signing-key.pub.pem')" />
   </ItemGroup>
 </Project>

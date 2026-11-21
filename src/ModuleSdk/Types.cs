@@ -37,3 +37,18 @@ public sealed record ProbeResult(bool Reachable, string? Model, string? Firmware
 public sealed record ApplyResult(bool Succeeded, int Added, int Updated, int Removed, string? Error);
 
 public sealed record ImportFile(string FileName, string ContentType, byte[] Content);
+
+/// <summary>
+/// What the service gives an adapter when it loads. An adapter takes this in its
+/// constructor, or has a constructor with no parameters.
+/// </summary>
+/// <param name="ModuleId">The module's id from its module data.</param>
+/// <param name="Http">A shared client for talking to printers over HTTP.</param>
+/// <param name="Log">Writes a line to the service log. Never log passwords or file contents.</param>
+public sealed record ModuleContext(string ModuleId, HttpClient Http, Action<string> Log);
+
+public static class ModuleSdkInfo
+{
+    /// <summary>Raised when the contract changes in a way old modules cannot meet.</summary>
+    public const int Version = 1;
+}

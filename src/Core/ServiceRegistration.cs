@@ -8,8 +8,11 @@ using ScanRelay.Core.Cloud;
 using ScanRelay.Core.Data;
 using ScanRelay.Core.Install;
 using ScanRelay.Core.Jobs;
+using ScanRelay.Core.Modules;
+using ScanRelay.Core.Printers;
 using ScanRelay.Core.Security;
 using ScanRelay.Core.Settings;
+using ScanRelay.Core.Sync;
 
 namespace ScanRelay.Core;
 
@@ -48,6 +51,10 @@ public static class ServiceRegistration
         services.AddSingleton<AlertService>();
         services.AddSingleton<JobPipeline>();
         services.AddSingleton<Retention>();
+        services.TryAddSingleton(_ => TrustedKeys.BuiltIn());
+        services.AddSingleton<ModuleHost>();
+        services.AddSingleton<PrinterService>();
+        services.AddSingleton<DirectorySync>();
         return services;
     }
 

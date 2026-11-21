@@ -1,13 +1,22 @@
 <Solution>
+  <Folder Name="/modules/" />
+  <Folder Name="/modules/scanrelay/" />
+  <Folder Name="/modules/scanrelay/sample/">
+    <Project Path="modules/scanrelay/sample/ScanRelay.Modules.Sample.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Admin/ScanRelay.Admin.csproj" />
     <Project Path="src/Core/ScanRelay.Core.csproj" />
     <Project Path="src/ModuleSdk/ScanRelay.ModuleSdk.csproj" />
     <Project Path="src/Service/ScanRelay.Service.csproj" />
   </Folder>
+  <Folder Name="/src/ModuleSdk/" />
   <Folder Name="/tests/">
     <Project Path="tests/Core.Tests/ScanRelay.Core.Tests.csproj" />
     <Project Path="tests/MockCloud/ScanRelay.MockCloud.csproj" />
     <Project Path="tests/Service.Tests/ScanRelay.Service.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/MockDevices/">
+    <Project Path="tests/MockDevices/ScanRelay.MockDevices.csproj" />
   </Folder>
 </Solution>

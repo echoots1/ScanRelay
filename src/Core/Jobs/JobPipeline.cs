@@ -33,6 +33,9 @@ public sealed class JobPipeline(
     /// <summary>Waits before the three retries of a Graph or network error.</summary>
     public static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2)];
 
+    /// <summary>What a scan made with a printer's test entry is recorded as. It is not sent anywhere.</summary>
+    public const string TestScanMessage = "Test scan received. The printer can reach the share. The file was not uploaded.";
+
     private readonly ConcurrentDictionary<string, Tracked> _tracked = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, byte> _inProgress = new();
 
@@ -118,6 +121,8 @@ public sealed class JobPipeline(
             string? refusal =
                 !File.Exists(file) ? "The file is no longer on the server."
                 : !s.AllowedExtensions().Contains(extension) ? $"File type not allowed: .{extension}"
+                : job.FolderName.Equals(Printers.PrinterService.TestEntryId.ToString(), StringComparison.OrdinalIgnoreCase)
+                    ? TestScanMessage
                 : job.PersonId is null ? "The folder matches no known person."
                 : null;
             if (refusal is not null)
@@ -285,6 +290,7 @@ public sealed class JobPipeline(
         else
         {
             logger.LogWarning("Job {Job} failed for folder {Folder}, {Size} bytes: {Reason}", job.Id, job.FolderName, job.SizeBytes, error);
+            if (error == TestScanMessage) return;
             var who = job.PersonId is { } id ? (await db.People.FindAsync([id], ct))?.DisplayName ?? id.ToString() : $"folder \"{job.FolderName}\"";
             await alerts.RaiseAsync(AlertKind.ScanFailed, $"Scan for {who} at {job.DetectedUtc:u}: {error}", ct);
         }
