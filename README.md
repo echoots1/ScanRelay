@@ -1,6 +1,9 @@
 # ScanRelay
 
-> Status: **early development.** The foundations are in place. It does not move scans yet.
+> Status: **built, not yet verified on a real Windows Server or a real tenant.**
+> The service, admin screen, module system and installer exist and pass their
+> automated tests against a mock Microsoft 365 and a mock printer. No module
+> for a real printer exists yet. See [what is and is not verified](docs/plan.md#what-is-verified).
 
 A person picks their name on the printer panel, scans, and the PDF lands in
 `Documents/Scans` in their own OneDrive.
@@ -10,47 +13,23 @@ run entirely from a web admin screen. It moves scans from a hidden share into
 each person's OneDrive through Microsoft Graph, and keeps every printer's
 address book matched to an Entra group.
 
-- [Spec](docs/spec.pdf) — what the app does and why
-- [Plan](docs/plan.md) — technical decisions, milestones, risks, open questions
+- [Install guide](docs/install.md)
+- [Spec](docs/spec.pdf): what the app does and why
+- [Plan](docs/plan.md): decisions, what is built, what is verified
+- [Printer modules](docs/modules/README.md) and [writing a module](docs/writing-a-module.md)
+- [Development](docs/development.md), [server test](docs/server-test.md), [releasing](docs/releasing.md)
+- [Privacy](PRIVACY.md), [security](SECURITY.md), [contributing](CONTRIBUTING.md)
 
-## Layout
-
-```
-/src
-  /Core         database and shared types
-  /Service      the Windows service: intake, upload, directory sync, module host
-  /Admin        web admin screen, served by the service
-  /ModuleSdk    the adapter interface and helpers for module authors
-  /Installer    (planned)
-/modules        (planned) model data and adapter code, one folder per printer family
-/catalog        (planned) the module index, generated and signed at release
-/tests
-/docs
-```
-
-## Building
+## Try it without a tenant or a printer
 
 Needs the .NET 10 SDK.
 
 ```
-dotnet build ScanRelay.slnx
-dotnet test ScanRelay.slnx
+dotnet run --project tests/DevHarness
 ```
 
-To run the service on a development machine, with its data in a folder of your choice:
-
-```
-dotnet run --project src/Service -- --DataFolder=./data --urls=http://localhost:5080
-```
-
-Then open `http://localhost:5080/health`.
-
-After changing the database model, add a migration:
-
-```
-dotnet tool restore
-dotnet ef migrations add <Name> --project src/Core -o Data/Migrations
-```
+Open `http://localhost:5080`. This runs the real app against a mock Microsoft
+365 and a mock printer. [Development](docs/development.md) has the details.
 
 ## Licence
 
