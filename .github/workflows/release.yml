@@ -1,0 +1,98 @@
+name: Release
+
+# A release is built here, from the public repo, and nowhere else.
+# Push a tag such as v1.2.0 to start one. It stops for approval, then publishes a draft.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+    # The "release" environment holds the signing key and names who must approve.
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Check the tag matches the version in the code
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          [xml]$props = Get-Content Directory.Build.props
+          $inCode = $props.Project.PropertyGroup.Version
+          if ($version -ne $inCode) { throw "The tag says $version but Directory.Build.props says $inCode." }
+          "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Check the signing key
+        shell: pwsh
+        env:
+          MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
+        run: |
+          if (-not $env:MODULE_SIGNING_KEY) { throw "The MODULE_SIGNING_KEY secret is not set. See docs/releasing.md." }
+          if (-not (Test-Path catalog/signing-key.pub.pem)) { throw "catalog/signing-key.pub.pem is not in the repo. See docs/releasing.md." }
+          dotnet run --project tools/ModuleTool --configuration Release -- key-matches catalog/signing-key.pub.pem
+          if ($LASTEXITCODE -ne 0) { throw "The signing key does not match the public key the app is built to trust." }
+
+      - name: Build and test
+        run: |
+          dotnet build ScanRelay.slnx --configuration Release
+          dotnet test ScanRelay.slnx --configuration Release --no-build
+
+      - name: Publish the service
+        run: dotnet publish src/Service --configuration Release --runtime win-x64 --self-contained --output artifacts/service
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          Compress-Archive -Path artifacts/service/* -DestinationPath artifacts/payload.zip
+          $payload = (Resolve-Path artifacts/payload.zip).Path
+          dotnet publish src/Installer --configuration Release --runtime win-x64 --self-contained -p:PublishSingleFile=true -p:PayloadZip="$payload" --output artifacts/installer
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item artifacts/installer/ScanRelaySetup.exe "release/ScanRelaySetup-$env:VERSION.exe"
+
+      - name: Package, sign and index the modules
+        shell: pwsh
+        env:
+          MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
+        run: |
+          $tool = "tools/ModuleTool"
+          Get-ChildItem modules -Recurse -Filter *.csproj | ForEach-Object {
+            $out = "artifacts/modules/$($_.BaseName)"
+            dotnet publish $_.FullName --configuration Release --output $out
+            if ($LASTEXITCODE -ne 0) { throw "Publishing $($_.Name) failed." }
+            dotnet run --project $tool --configuration Release --no-build -- pack $out release
+            if ($LASTEXITCODE -ne 0) { throw "Packing $($_.Name) failed." }
+          }
+          Get-ChildItem release -Filter *.srmod | ForEach-Object {
+            dotnet run --project $tool --configuration Release --no-build -- sign $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Signing $($_.Name) failed." }
+          }
+          dotnet run --project $tool --configuration Release --no-build -- index release
+          if ($LASTEXITCODE -ne 0) { throw "Writing the module index failed." }
+
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release -File | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content release/SHA256SUMS.txt
+
+      - name: Publish a draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "docs/releases/$env:VERSION.md"
+          if (-not (Test-Path $notes)) { throw "Write the release notes and update steps in $notes first. See docs/releasing.md." }
+          gh release create "${{ github.ref_name }}" (Get-ChildItem release -File).FullName --draft --title "$env:VERSION" --notes-file $notes

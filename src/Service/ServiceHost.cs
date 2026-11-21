@@ -138,7 +138,7 @@ public static class ServiceHost
         {
             var s = await settings.GetAsync();
             if (string.IsNullOrEmpty(s.TenantId) || string.IsNullOrEmpty(s.ClientId) || s.AdminGroupId is null) return Results.Redirect("/setup");
-            var target = returnUrl is { Length: > 0 } && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//", StringComparison.Ordinal) ? returnUrl : "/";
+            var target = IsLocalPath(returnUrl) ? returnUrl! : "/";
             return Results.Challenge(new AuthenticationProperties { RedirectUri = target }, [Schemes.Oidc]);
         }).AllowAnonymous();
 
@@ -197,6 +197,10 @@ public static class ServiceHost
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void AddEventLog(ILoggingBuilder logging) => logging.AddEventLog(o => o.SourceName = "ScanRelay");
+
+    /// <summary>True for a path on this site. Anything that a browser could read as another site is refused.</summary>
+    public static bool IsLocalPath(string? url) =>
+        url is { Length: > 0 } && url[0] == '/' && (url.Length == 1 || (url[1] != '/' && url[1] != '\\')) && !url.Any(char.IsControl);
 
     public static Actor ToActor(ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue("oid"), out var id) ? new Actor(id, user.Identity?.Name ?? id.ToString()) : Actor.Setup;

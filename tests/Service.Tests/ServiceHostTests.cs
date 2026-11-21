@@ -246,6 +246,19 @@ public sealed class ServiceHostTests : IAsyncLifetime
         Assert.DoesNotContain("hunter2", json);
     }
 
+    [Theory]
+    [InlineData("/jobs", true)]
+    [InlineData("/setup?step=finish", true)]
+    [InlineData("//evil.example", false)]
+    [InlineData("/\\evil.example", false)]
+    [InlineData("https://evil.example", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void After_sign_in_people_are_only_sent_to_pages_on_this_site(string? url, bool allowed)
+    {
+        Assert.Equal(allowed, ServiceHost.IsLocalPath(url));
+    }
+
     [Fact]
     public async Task Signing_out_ends_the_session()
     {
