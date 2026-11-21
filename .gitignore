@@ -37,3 +37,8 @@ secrets.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Development data folder
+/data/
+/src/Service/data/
+design.db

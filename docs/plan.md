@@ -1,6 +1,6 @@
 # ScanRelay plan
 
-Status: draft for review. Nothing here is built. The [spec](spec.pdf) says what
+Status: milestone 0 is built. Everything after it is planned, not built. The [spec](spec.pdf) says what
 the app does; this document says how it gets built, in what order, and what
 has to be settled first.
 
@@ -51,13 +51,13 @@ G1 and G2 are settled as follows.
 |---|----------|--------|-------|
 | D1 | Runtime | .NET 10 (current LTS), self-contained publish | No runtime to install on the server. |
 | D2 | Process shape | One process: Windows service hosting Kestrel, Blazor Server and the background workers | `/src/Service` and `/src/Admin` are separate projects in one host. |
-| D3 | Installer | **To decide.** WiX bundle with a custom setup UI, or a plain MSI plus an elevated setup program for the parts MSI cannot do | The first gives the "Modify" experience the spec describes. The second is far less work. Recommend a short spike in M1 before committing. |
+| D3 | Installer | **Decided: the full installer the spec describes**, as a WiX bundle with a custom setup UI | Version 1 ships the whole spec. Built in two passes: folders, account, share, certificates and service in M1; the Modules step in M4. |
 | D4 | Database | SQLite through EF Core, migrations run at start | Backup before upgrade is a file copy. |
 | D5 | Secrets at rest | Windows DPAPI, machine scope, with the data folder's rights as the second layer | Covers printer admin sign-ins and the printer account password. |
 | D6 | Graph | Microsoft Graph SDK, app-only with certificate | One thin interface in front of it so tests use a fake. |
 | D7 | Admin sign-in | OpenID Connect against the tenant, group check done server-side with the app's own Graph access | Avoids group claims and their size limit. |
 | D8 | Module packaging | One zip per module: `module.yaml`, adapter assembly, signature file | Each module loads in its own load context. |
-| D9 | Module signing | ECDSA P-256 over the package hash; public key compiled into the installer and the service | Key custody is an open question. The service re-checks at load, not only the installer at install. |
+| D9 | Module signing | ECDSA P-256 over the package hash; public key compiled into the installer and the service | **Decided:** the private key is a GitHub Actions secret, used only by the release pipeline. The service re-checks at load, not only the installer at install. |
 | D10 | Logging | Serilog to a rolling file and the Windows Event Log | No file contents, as the spec requires. |
 | D11 | Tests | xUnit; fakes for Graph, the file system clock and devices; mock device servers under `/tests/MockDevices` | |
 | D12 | CI | GitHub Actions on Windows runners; release built only by the pipeline | Needed from M1, since the Windows-only parts cannot be built or tested elsewhere. |
@@ -76,14 +76,35 @@ parts need a test server and a written manual checklist.
 The printer modules need real hardware. Mock devices prove the code does what
 we think the printer wants. Only a real machine proves the printer agrees.
 
+### Decided: how version 1 is verified
+
+- Version 1 is the whole spec, not a cut-down first release. It is not called
+  done until it has been verified on a real Windows Server.
+- Every change builds and runs the automated tests on Windows and Linux.
+- Each milestone ends with a full pass on the test server, following a written
+  checklist kept in `/docs`. The checklist for a milestone is written with
+  that milestone, and every earlier checklist is run again.
+- The printer modules are verified on real machines once the models are
+  known. Until then they are not started.
+
+### Decided: built for any organisation
+
+Nothing about one tenant, network or printer fleet is built in. Anything that
+differs between organisations is a setting, with a safe default, including the
+alert mailbox. Restricting `Mail.Send` to that mailbox is done by the
+organisation in Exchange Online, so setup explains how and the health check
+reports whether it is in place, but the app works either way.
+
 ## 3. Milestones
 
 These follow the spec's build order. Each ends in something usable.
 
-### M0. Foundations
-- Settle G3, G4, D3 and the name. (G1, G2 and the licence are decided.)
-- Solution skeleton, CI that builds and runs tests on every change, secret scanning on.
+### M0. Foundations (built)
+- Solution skeleton on .NET 10: `Core`, `ModuleSdk`, `Admin`, `Service`, and two test projects. `Core` is an addition to the spec's layout; it holds the database and shared types that both `Service` and `Admin` use.
+- One process serves the admin screen and a `/health` check, and creates and upgrades the database on start.
 - Database schema, first draft: settings, people, printers, jobs, runs, pushes, printer entries, audit log.
+- The adapter interface from the spec, as a first draft.
+- CI builds and tests every change on Windows and Linux, publishes the Windows service build, and scans for secrets.
 
 ### M1. Installer and core service
 - Installer: folders, local printer account, hidden share, rights, both certificates, service registration, firewall rule, summary before changes, uninstall.
@@ -140,22 +161,22 @@ From the spec, with a recommendation where there is one.
 | Question | Recommendation | Needed by |
 |----------|----------------|-----------|
 | Licence: Apache 2.0 or MIT | **Decided: Apache 2.0.** `LICENSE` and `NOTICE` are in the repo. | Done |
-| Final name for app and repo | — | M0, before anything is public |
-| Helpdesk role needed? | Keep it. It is cheap once roles exist and hard to add later. | M1 |
-| Accept tenant-wide `Files.ReadWrite.All`? | Yes, see G7. | M1 |
-| Alert mailbox, and restrict `Mail.Send` to it? | Restrict. Setup shows the exact command and the health check reports whether the restriction is in place. | M2 |
+| Final name for app and repo | **Decided: ScanRelay.** | Done |
+| Helpdesk role needed? | **Decided: kept.** | Done |
+| Accept tenant-wide `Files.ReadWrite.All`? | **Decided: yes**, see G7. | Done |
+| Alert mailbox, and restrict `Mail.Send` to it? | **Decided:** the mailbox is a setting. Restriction is recommended, explained by setup and reported by the health check, not required. | Done |
 | Printers not installed on the server | Allow by address, as the spec's "Adding a printer" already says. | M4 |
-| Module signing key: who holds it, where | Not on a personal computer. A protected secret in the release pipeline is the minimum; a hardware key or key vault is better. | M4 |
-| Exact models and firmware of the first printers | — | M5 to M7 |
+| Module signing key: who holds it, where | **Decided:** a GitHub Actions secret, used only by the release pipeline. | Done |
+| Exact models and firmware of the first printers | To come. | M5 to M7 |
 | Kyocera: does the network service method work, and is it on by default | — | M5 |
 | Brother: does the tool cover scan-to-folder profiles; how many slots | — | M6 |
 | Canon: `direct` or `host`; which address list | — | M7 |
 
-Added by this plan: G1, G2, G3, G4, G9 and D3 above.
+G3, G4 and G9 are decided as proposed in section 1.
 
 ## 5. Biggest risks
 
 1. **The printer methods are unproven.** Two of the three are undocumented or unofficial. M1 to M4 are worth having without them, which is why the order is what it is.
-2. **Installer effort (G6, D3).** Easy to underestimate. Spike it early.
+2. **Installer effort (G6, D3).** The full installer is the largest single piece of version 1 and can only be tested on Windows.
 3. **Tenant policy.** Conditional Access, consent restrictions and Exchange policies vary. Every setup step needs a by-hand path and a health check that says exactly what is missing.
 4. **Printer behaviour against a locked-down share (G5).** Needs real machines well before M5.

@@ -1,6 +1,6 @@
 # ScanRelay
 
-> Working name. Status: **planning** — there is no code yet.
+> Status: **early development.** The foundations are in place. It does not move scans yet.
 
 A person picks their name on the printer panel, scans, and the PDF lands in
 `Documents/Scans` in their own OneDrive.
@@ -13,23 +13,44 @@ address book matched to an Entra group.
 - [Spec](docs/spec.pdf) — what the app does and why
 - [Plan](docs/plan.md) — technical decisions, milestones, risks, open questions
 
-## Planned layout
+## Layout
 
 ```
 /src
-  /Service      intake, upload, directory sync, module host
-  /Admin        web admin screen
-  /Installer
+  /Core         database and shared types
+  /Service      the Windows service: intake, upload, directory sync, module host
+  /Admin        web admin screen, served by the service
   /ModuleSdk    the adapter interface and helpers for module authors
-/modules
-  /<vendor>/<module>   model data and adapter code for one printer family
-/catalog        the module index, generated and signed at release
+  /Installer    (planned)
+/modules        (planned) model data and adapter code, one folder per printer family
+/catalog        (planned) the module index, generated and signed at release
 /tests
-  /MockDevices  fake printer endpoints so modules can be tested without hardware
-/docs           install guide, per-vendor notes, how to write a module
+/docs
 ```
 
-Folders are created as each milestone needs them.
+## Building
+
+Needs the .NET 10 SDK.
+
+```
+dotnet build ScanRelay.slnx
+dotnet test ScanRelay.slnx
+```
+
+To run the service on a development machine, with its data in a folder of your choice:
+
+```
+dotnet run --project src/Service -- --DataFolder=./data --urls=http://localhost:5080
+```
+
+Then open `http://localhost:5080/health`.
+
+After changing the database model, add a migration:
+
+```
+dotnet tool restore
+dotnet ef migrations add <Name> --project src/Core -o Data/Migrations
+```
 
 ## Licence
 
