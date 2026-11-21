@@ -1,6 +1,10 @@
 # ScanRelay plan
 
-Status: milestone 0 is built. Everything after it is planned, not built. The [spec](spec.pdf) says what
+Status: milestones 0 to 4 and the public-release groundwork are built and pass
+their automated tests. Nothing has been verified on a real Windows Server, a
+real tenant or a real printer yet. The three vendor modules are not started.
+[What is verified](#what-is-verified) says exactly where each part stands, and
+[the overnight log](overnight-log.md) lists the questions answered along the way. The [spec](spec.pdf) says what
 the app does; this document says how it gets built, in what order, and what
 has to be settled first.
 
@@ -54,12 +58,12 @@ G1 and G2 are settled as follows.
 | D3 | Installer | **Decided: the full installer the spec describes**, as a WiX bundle with a custom setup UI | Version 1 ships the whole spec. Built in two passes: folders, account, share, certificates and service in M1; the Modules step in M4. |
 | D4 | Database | SQLite through EF Core, migrations run at start | Backup before upgrade is a file copy. |
 | D5 | Secrets at rest | Windows DPAPI, machine scope, with the data folder's rights as the second layer | Covers printer admin sign-ins and the printer account password. |
-| D6 | Graph | Microsoft Graph SDK, app-only with certificate | One thin interface in front of it so tests use a fake. |
+| D6 | Graph | **Changed:** plain HTTP calls to Graph through our own small client, app-only with certificate. No Graph SDK and no Microsoft sign-in library. | It lets the real sign-in and Graph code run in tests against a mock that checks the certificate signature, consent and upload rules. |
 | D7 | Admin sign-in | OpenID Connect against the tenant, group check done server-side with the app's own Graph access | Avoids group claims and their size limit. |
 | D8 | Module packaging | One zip per module: `module.yaml`, adapter assembly, signature file | Each module loads in its own load context. |
 | D9 | Module signing | ECDSA P-256 over the package hash; public key compiled into the installer and the service | **Decided:** the private key is a GitHub Actions secret, used only by the release pipeline. The service re-checks at load, not only the installer at install. |
-| D10 | Logging | Serilog to a rolling file and the Windows Event Log | No file contents, as the spec requires. |
-| D11 | Tests | xUnit; fakes for Graph, the file system clock and devices; mock device servers under `/tests/MockDevices` | |
+| D10 | Logging | **Changed:** the built-in .NET logging, with a small rolling-file writer of our own and the Windows Event Log | One less dependency. One file per day, kept for 30 days. No file contents, as the spec requires. |
+| D11 | Tests | xUnit; a mock Microsoft 365 under `/tests/MockCloud`; mock printers under `/tests/MockDevices`; a browser test of the admin screen under `/tests/e2e` | |
 | D12 | CI | GitHub Actions on Windows runners; release built only by the pipeline | Needed from M1, since the Windows-only parts cannot be built or tested elsewhere. |
 
 ### What can be tested where
@@ -97,62 +101,41 @@ reports whether it is in place, but the app works either way.
 
 ## 3. Milestones
 
-These follow the spec's build order. Each ends in something usable.
+These follow the spec's build order.
 
-### M0. Foundations (built)
-- Solution skeleton on .NET 10: `Core`, `ModuleSdk`, `Admin`, `Service`, and two test projects. `Core` is an addition to the spec's layout; it holds the database and shared types that both `Service` and `Admin` use.
-- One process serves the admin screen and a `/health` check, and creates and upgrades the database on start.
-- Database schema, first draft: settings, people, printers, jobs, runs, pushes, printer entries, audit log.
-- The adapter interface from the spec, as a first draft.
-- CI builds and tests every change on Windows and Linux, publishes the Windows service build, and scans for secrets.
+| Milestone | State |
+|-----------|-------|
+| M0. Foundations | Built. |
+| M1. Installer and core service | Built. The service, first-run setup, sign-in with roles, audit log and Settings are tested. The installer is tested by a silent install on a Windows build machine; its screens have not been looked at by a person. |
+| M2. Jobs | Built and tested: intake, upload, retries, retention, re-run, alerts, Jobs page, Dashboard. |
+| M3. People and sync | Built and tested: groups, manual people, exclusions, folders, preview, change guard, Runs and People pages. |
+| M4. Module system | Built and tested with the sample module and mock printer: SDK, packaging, signing, catalog, module host, Printers and Modules pages, update check, drift check. |
+| M5. Kyocera module | **Not started.** Waiting for the model, firmware and a machine to test on. |
+| M6. Brother module | **Not started.** Same. |
+| M7. Canon module | **Not started.** Same. |
+| M8. Public release | Docs, module template, mock devices, build checks and the release pipeline are in place. No release has been made. The signing key does not exist yet; see [releasing](releasing.md). |
 
-### M1. Installer and core service
-- Installer: folders, local printer account, hidden share, rights, both certificates, service registration, firewall rule, summary before changes, uninstall.
-- Service host, HTTPS, localhost-only and open without sign-in until setup is finished.
-- First run: Entra connection (one admin sign-in to create the registration, or by hand), consent wait, health check, admin group, first admin sign-in closes the open window.
-- Admin sign-in with Admin and Helpdesk roles. Audit log.
-- Settings page, export and import without secrets.
+<a id="what-is-verified"></a>
+## What is verified
 
-**Done when:** a clean Windows Server goes from installer to a signed-in admin on the Settings page, and uninstall leaves nothing behind but the data folder if kept.
+"Tested" below means automated tests that run on every change, on Windows and
+Linux build machines. It does not mean a person has seen it work on a real
+server.
 
-### M2. Jobs
-- Watcher plus 60-second sweep, finished-file rule, 10-minute timeout.
-- Upload: small and large paths, `Documents` by its built-in reference, `Scans` created if missing, naming template, clash suffix, allowed types.
-- Retry three times with growing delay. Move to `Store`. Retention for files and job records.
-- Jobs page: search, filter, re-run, open file (Admin only, audited).
-- Alert emails with grouping. Dashboard, first version.
+| Part | How it has been checked | What has not |
+|------|-------------------------|--------------|
+| Scan intake, upload, retries, retention | Tests against the mock Microsoft 365, which stores real files and enforces name clashes and upload in pieces | A real OneDrive. A real printer writing over SMB. |
+| Sign-in to Graph with the certificate | The mock checks the signature against the uploaded certificate, as Entra does | A real tenant. |
+| Creating the app registration | Tests against the mock | A real tenant. The permission IDs are Microsoft's published ones but have not been tried. Sign-in by code may be blocked by your Conditional Access. |
+| Admin sign-in and roles | Tests run the real sign-in flow against the mock | A real tenant. |
+| Directory sync, change guard, drift check | Tests against the mocks | A real tenant with real group sizes. |
+| Module system | The sample module is packed, signed, installed, loaded and pushed to the mock printer in tests | Any real printer. |
+| Admin screen | A browser test walks through setup, a printer, a sync, a scan, a failure, the change guard and the Helpdesk role | Nobody has used it by hand. |
+| Installer | A silent install, check and uninstall on a Windows build machine | The wizard screens. Modify and Update through the screens. A real server with real policies. |
+| Alert emails | Tests check what is sent and to whom | Delivery through a real mailbox. |
+| Vendor modules | Not built | Everything. |
 
-**Done when:** a file dropped into a hand-made `Inbox\<user id>` folder reaches that person's OneDrive, a forced failure shows on the Jobs page and re-runs cleanly. The app can go live here with address books kept by hand.
-
-### M3. People and sync
-- Read groups, filter to enabled accounts with a OneDrive, guests by setting.
-- Manual people and exclusions, kept through every sync.
-- Wanted state, diff, folder creation and removal.
-- Runs page: sync now, preview, change guard with approve or cancel.
-- No printers yet, so pushes are recorded against a fake module.
-
-**Done when:** adding and removing a group member creates and removes their folder, and emptying the group stops at the change guard.
-
-### M4. Module system
-- Module SDK: `IDeviceAdapter`, entry and device types, module data schema.
-- Package format, signing tool, catalog index generation in the release pipeline.
-- Installer Modules step: list, download, verify, install, custom module from a file with a warning.
-- Module host, load-time verification, Modules page, daily update check.
-- Printers page: list installed Windows printers, match to a module, per-printer overrides, test connection, test entry, push now, download import file.
-- Nightly drift check for modules that can read back.
-- One mock device and one sample module to prove the whole path.
-
-**Done when:** the sample module installs through the installer and a sync pushes entries to the mock device.
-
-### M5 to M7. Kyocera, Brother, Canon
-Each one: read the references in full, confirm the method on the real model and firmware, write module data, adapter and mock device, write the per-vendor doc with unofficial methods labelled.
-
-Order stays as the spec has it. Each is blocked by the matching open question below, and none should be started before a real machine is on hand to test against.
-
-### M8. Public release
-- Install guide, module author guide and template, privacy statement.
-- Release pipeline with checksums, release notes carrying the per-release update steps.
-- Update flow tested end to end: stop, back up database, replace, update modules, start, migrate.
+The checklist for a real server is [server-test.md](server-test.md).
 
 ## 4. Open questions
 
