@@ -3,12 +3,17 @@
 @inject SettingsStore Settings
 @inject JobPipeline Pipeline
 @inject UpdateChecker Updates
+@inject SettingsReview Review
 
 <PageTitle>Dashboard · ScanRelay</PageTitle>
 <h1>Dashboard</h1>
 <p class="lead">Scans waiting, failures in the last day, the last sync, and the state of each printer.</p>
 <Messages Notice="@Notice" Error="@Error" />
 
+@if (_reviewCount > 0 && IsAdmin)
+{
+    <div class="banner warn">The last update changed what @(_reviewCount == 1 ? "a setting means" : $"{_reviewCount} settings mean"). <a href="/settings">Open Settings</a> to check and save.</div>
+}
 @if (_update?.App is { } app)
 {
     <div class="banner @(app.Security ? "bad" : "info")">
@@ -147,7 +152,9 @@ else
             .Concat(pushes.Select(p => new ErrorRow(p.StartedUtc, "Push to " + p.Printer.Name, p.Error, "/runs")))
             .OrderByDescending(e => e.When).Take(10)];
         _update = await Updates.GetStatusAsync();
+        _reviewCount = (await Review.GetPendingAsync()).Count;
     }
 
     private bool _seenSetup;
+    private int _reviewCount;
 }

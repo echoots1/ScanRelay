@@ -131,6 +131,25 @@ public class SettingsTests
         Assert.Equal(new AppSettings(), await env.Settings.GetAsync());
     }
 
+    [Fact]
+    public async Task After_an_update_that_changes_a_settings_meaning_the_admin_is_asked_to_look_again()
+    {
+        await using var env = await TestEnvironment.StartAsync();
+        var review = env.Get<SettingsReview>();
+        Assert.Empty(await review.GetPendingAsync());
+
+        // A later version of the app starts on this database.
+        ChangedSetting[] history = [new(2, "File retention", "Now counted from upload, not from scan."), new(3, "Sync interval", "Now in minutes.")];
+        await review.NoteUpgradeAsync(3, history);
+        await review.NoteUpgradeAsync(3, history);
+
+        Assert.Equal(["File retention", "Sync interval"], (await review.GetPendingAsync()).Select(p => p.Setting));
+
+        await review.ClearAsync();
+        await review.NoteUpgradeAsync(3, history);
+        Assert.Empty(await review.GetPendingAsync());
+    }
+
     [Theory]
     [InlineData("Scan_{yyyy-MM-dd_HHmmss}", "Scan_2026-11-20_143205")]
     [InlineData("{yyyyMMdd} scan", "20261120 scan")]

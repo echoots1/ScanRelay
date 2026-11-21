@@ -7,11 +7,22 @@
 @inject AppRegistration Registration
 @inject InstallConfig Install
 @inject AuditLog Audit
+@inject SettingsReview Review
 
 <PageTitle>Settings · ScanRelay</PageTitle>
 <h1>Settings</h1>
 <p class="lead">Every setting is changed here and stored in the database. Folder locations, the share, the port, the web certificate and the printer account are changed by running the installer, because those need administrator rights.</p>
 <Messages Notice="@Notice" Error="@Error" />
+
+@if (_review.Count > 0)
+{
+    <div class="banner warn">
+        <strong>The last update changed what these settings mean. Check them, then save.</strong>
+        <ul>
+            @foreach (var item in _review) { <li><strong>@item.Setting:</strong> @item.Why</li> }
+        </ul>
+    </div>
+}
 
 @if (_s is not null)
 {
@@ -128,7 +139,13 @@
     private AppSettings? _s;
     private IReadOnlyList<HealthItem>? _health;
 
-    protected override async Task LoadAsync() => _s = await Store.GetAsync();
+    private IReadOnlyList<ChangedSetting> _review = [];
+
+    protected override async Task LoadAsync()
+    {
+        _s = await Store.GetAsync();
+        _review = await Review.GetPendingAsync();
+    }
 
     private static int Int(ChangeEventArgs e, int fallback) => int.TryParse(e.Value?.ToString(), out var v) ? v : fallback;
 
@@ -161,7 +178,13 @@
         return null;
     }, "The admin group was changed and saved.");
 
-    private Task SaveAsync() => DoAsync(() => Store.SaveAsync(_s!, Actor), "Settings saved.");
+    private Task SaveAsync() => DoAsync(
+        async () =>
+        {
+            await Store.SaveAsync(_s!, Actor);
+            await Review.ClearAsync();
+        },
+        "Settings saved.");
 
     private Task RunHealthAsync() => DoAsync(async () => { _health = await Health.RunAsync(); });
 

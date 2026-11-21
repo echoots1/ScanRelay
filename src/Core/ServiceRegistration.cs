@@ -45,6 +45,7 @@ public static class ServiceRegistration
         services.AddSingleton<SecretProtector>();
         services.AddSingleton<AuditLog>();
         services.AddSingleton<SettingsStore>();
+        services.AddSingleton<SettingsReview>();
         services.AddSingleton<GraphCertificate>();
         services.AddSingleton<AppTokenProvider>();
         services.TryAddSingleton<ICloud, GraphCloud>();
@@ -71,5 +72,6 @@ public static class ServiceRegistration
         await using var db = await services.GetRequiredService<IDbContextFactory<ScanRelayDbContext>>().CreateDbContextAsync(ct);
         await db.Database.MigrateAsync(ct);
         await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct);
+        await services.GetRequiredService<SettingsReview>().NoteUpgradeAsync(ct);
     }
 }
