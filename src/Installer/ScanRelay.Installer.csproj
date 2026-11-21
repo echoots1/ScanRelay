@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Lets Linux build the Windows-only project; it still only runs on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>ScanRelaySetup</AssemblyName>
+    <RootNamespace>ScanRelay.Installer</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <!-- Windows Forms needs culture data for its own resources. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Only a publish is tied to Windows x64, so a plain build works anywhere. One file, because setup copies itself into the program folder. -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The engine is its own project in a subfolder. -->
+    <Compile Remove="Engine\**" />
+    <EmbeddedResource Remove="Engine\**" />
+    <None Remove="Engine\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The published service, zipped. Without it setup looks for payload.zip beside itself. -->
+    <EmbeddedResource Include="$(PayloadZip)" LogicalName="payload.zip" Condition="'$(PayloadZip)' != '' And Exists('$(PayloadZip)')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="Engine\ScanRelay.Installer.Engine.csproj" />
+    <ProjectReference Include="..\Core\ScanRelay.Core.csproj" />
+  </ItemGroup>
+</Project>
