@@ -49,3 +49,6 @@ design.db
 # Browser test
 node_modules/
 package-lock.json
+
+# Probe reports are for sharing by hand, never for the repo
+kyocera-probe-report.txt

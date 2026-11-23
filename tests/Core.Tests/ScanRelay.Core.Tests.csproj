@@ -13,6 +13,7 @@
     <ProjectReference Include="..\MockCloud\ScanRelay.MockCloud.csproj" />
     <ProjectReference Include="..\MockDevices\ScanRelay.MockDevices.csproj" />
     <ProjectReference Include="..\..\tools\ModuleTool\ScanRelay.ModuleTool.csproj" />
+    <ProjectReference Include="..\..\tools\KyoceraProbe\ScanRelay.KyoceraProbe.csproj" />
     <!-- Built first so the tests can package it, but never loaded directly. -->
     <ProjectReference Include="..\..\modules\scanrelay\sample\ScanRelay.Modules.Sample.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>

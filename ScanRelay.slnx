@@ -29,6 +29,9 @@
     <Project Path="tests/MockDevices/ScanRelay.MockDevices.csproj" />
   </Folder>
   <Folder Name="/tools/" />
+  <Folder Name="/tools/KyoceraProbe/">
+    <Project Path="tools/KyoceraProbe/ScanRelay.KyoceraProbe.csproj" />
+  </Folder>
   <Folder Name="/tools/ModuleTool/">
     <Project Path="tools/ModuleTool/ScanRelay.ModuleTool.csproj" />
   </Folder>
