@@ -52,6 +52,11 @@ public static class ToolProgram
             case ["keygen", var privatePath, var publicPath]:
             {
                 var (privatePem, publicPem) = ModuleSigning.NewKeyPair();
+                foreach (var path in new[] { privatePath, publicPath })
+                {
+                    if (Path.GetDirectoryName(Path.GetFullPath(path)) is { } folder) Directory.CreateDirectory(folder);
+                }
+
                 File.WriteAllText(privatePath, privatePem);
                 File.WriteAllText(publicPath, publicPem);
                 output.WriteLine($"Wrote the private key to {privatePath}. Store it as the {KeyVariable} secret and delete the file.");
