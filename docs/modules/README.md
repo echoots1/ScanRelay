@@ -10,6 +10,29 @@ added.
 | Brother | Models supported by the Mass Deployment Tool | **Not started.** |
 | Canon | imageRUNNER ADVANCE and imageFORCE | **Not started.** |
 
+## The first printers
+
+These are the models the first modules are for. Firmware versions are still to come.
+
+| Make | Model | Notes |
+|------|-------|-------|
+| Kyocera | ECOSYS M8124cidn | In the family the spec's Kyocera module covers. |
+| Canon | imageCLASS MF642C series | **Not** an imageRUNNER ADVANCE or imageFORCE. See below. |
+| Canon | imageCLASS MF650C series | Same. |
+| Canon | imageCLASS MF751Cdw II | Same. |
+
+No Brother model is on the list yet.
+
+**The Canon models change the Canon plan.** The spec's Canon method (build
+Canon's address book CSV and upload it on the import page, or copy it with
+Device Information Distribution) is the imageRUNNER ADVANCE method. The
+imageCLASS MF machines are a different product line with a different Remote
+UI. They can save and load their address book from the Remote UI, but the file
+format is not documented in what has been found so far, and Canon's manuals
+warn that a saved address book cannot always be loaded on another model. So
+the Canon module needs its method worked out from a real export file before
+anything is built.
+
 ## Why the three vendor modules are not started
 
 Each one depends on a method that has not been tried on a real machine, and
