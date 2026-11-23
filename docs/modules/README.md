@@ -6,7 +6,7 @@ added.
 | Module | Covers | State |
 |--------|--------|-------|
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
-| `kyocera-ecosys` | ECOSYS M8124cidn | **Built, not yet proven on a real printer.** Reads match the real machine. Writes pass against a mock. See below. |
+| `kyocera-ecosys` | ECOSYS M8124cidn | **Built. One contact added, changed and deleted on a real printer.** A full push through the app is still to be tried. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
 | Canon | imageCLASS MF642C, MF650C, MF751Cdw II | **Not started.** After Kyocera. |
 
@@ -45,11 +45,12 @@ not document it.
   `create_personal_address_enumeration` then `get_personal_address_list`, are
   shown in public write-ups. Each entry comes back with its name, its SMB
   server, path, port, sign-in name and password.
-- **Writing is built, and not yet tried on a real printer.** The message
-  shapes for `add_personal_address`, `update_personal_address` and
-  `delete_personal_address` were read from Net Viewer's files, and the module
-  uses them. They pass against a mock that answers the way the real printer
-  answered reads. How a real printer treats a write is the next thing to prove.
+- **Writing works on a real printer, for one contact.** On an ECOSYS
+  M8124cidn (firmware 2P4_S000.002.204) the write test added a contact at
+  number 150, renamed it, deleted it, and confirmed the other 18 contacts were
+  exactly as before. The printer stored the server, path, port and sign-in
+  name as sent. A full push of a real list through the app has not been tried
+  yet.
 - **What an entry looks like, from the real printer.** One contact holds a
   name, a number, and email, FTP, SMB, i-fax and fax details together. The SMB
   part is a server name with no backslashes, a path, port 445, a sign-in name
@@ -57,8 +58,8 @@ not document it.
 - **What the module owns.** Contacts whose folder ends in a person's id and
   that have no email, fax or FTP destination. Nothing else is changed or
   removed, whatever its number. New contacts get numbers from a reserved range,
-  100 to 199 by default; the range is a per-printer setting. Whether the
-  printer allows numbers that high is not known yet.
+  100 to 199 by default; the range is a per-printer setting. The M8124cidn
+  accepts number 150; its upper limit is not known.
 - **Sign-in.** The M8124cidn tested had sign-in for the service switched off
   (firmware 2P4_S000.002.204). The module cannot sign in yet. With sign-in on,
   it reports that plainly and changes nothing.

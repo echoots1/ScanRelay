@@ -48,7 +48,7 @@ public sealed class KyoceraModuleTests : IAsyncLifetime
         Assert.Contains("does not document", data.Method);
         Assert.True(data.MatchesWindowsName("Kyocera ECOSYS M8124cidn KX"));
         Assert.Equal(100, data.EntryLimit());
-        Assert.Empty(data.TestedFirmware);
+        Assert.Equal(["2P4_S000.002.204"], data.TestedFirmware);
     }
 
     [Fact]
