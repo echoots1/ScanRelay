@@ -75,7 +75,7 @@ public sealed class AlertService(SettingsStore settings, ICloud cloud, TimeProvi
             var s = await settings.GetAsync(ct);
             if (string.IsNullOrWhiteSpace(s.AlertSender) || s.AdminGroupId is not { } group) return false;
             var admins = await cloud.GetGroupMembersAsync(group, ct);
-            var to = admins.Where(a => a.Enabled && a.UserPrincipalName.Contains('@')).Select(a => a.UserPrincipalName).Distinct().ToList();
+            var to = Recipients(admins);
             if (to.Count == 0) return false;
             await cloud.SendMailAsync(s.AlertSender, to, subject, body, ct);
             return true;
@@ -86,6 +86,10 @@ public sealed class AlertService(SettingsStore settings, ICloud cloud, TimeProvi
             return false;
         }
     }
+
+    /// <summary>Each enabled member's mailbox address. Their sign-in name is used only when Entra lists no mailbox address for them.</summary>
+    public static List<string> Recipients(IEnumerable<DirectoryUser> members) =>
+        [.. members.Where(m => m.Enabled).Select(m => m.Mail ?? m.UserPrincipalName).Where(a => a.Contains('@')).Distinct(StringComparer.OrdinalIgnoreCase)];
 
     private Task SendAsync(AlertKind kind, List<string> lines, CancellationToken ct)
     {

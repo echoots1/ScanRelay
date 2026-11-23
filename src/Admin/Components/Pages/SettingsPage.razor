@@ -237,12 +237,13 @@
         await Store.SaveAsync(_s!, Actor);
         var s = await Store.GetAsync();
         if (s.AdminGroupId is not { } group) return "Choose the admin group first. Alert emails go to its members.";
-        var to = (await Cloud.GetGroupMembersAsync(group)).Where(u => u.Enabled).Select(u => u.UserPrincipalName).ToList();
+        var to = AlertService.Recipients(await Cloud.GetGroupMembersAsync(group));
         if (to.Count == 0) return "The admin group has no members to send to.";
         await Cloud.SendMailAsync(s.AlertSender!, to, "ScanRelay: test email", "This is a test email from ScanRelay. Alert emails will look like this and come from this mailbox.");
         await Audit.WriteAsync(Actor, "Test email sent", s.AlertSender);
+        Notice = $"Saved. Microsoft 365 accepted a test email from {s.AlertSender} to: {string.Join(", ", to)}. If it does not arrive, check that the sender is a real mailbox and look in junk.";
         return null;
-    }, "Saved, and a test email was sent to the admin group.");
+    }, null);
 
     private Task ImportAsync(InputFileChangeEventArgs e) => DoAsync(async () =>
     {

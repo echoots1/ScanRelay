@@ -315,6 +315,23 @@ public class JobTests
     }
 
     [Fact]
+    public async Task Alerts_go_to_each_admins_mailbox_address_not_their_sign_in_name()
+    {
+        await using var rig = await Rig.StartAsync();
+        var differs = rig.Env.State.AddUser("Alex Admin", "alex@tenant.example");
+        differs.Mail = "alex.admin@example.com";
+        var noMailbox = rig.Env.State.AddUser("Service Account", "svc@tenant.example");
+        noMailbox.Mail = null;
+        var group = rig.Env.State.AddGroup("Admins", differs, noMailbox);
+        rig.Env.State.AddUser("Alerts", "alerts@example.com");
+        await rig.Env.Settings.UpdateAsync(s => s with { AdminGroupId = group.Id, AlertSender = "alerts@example.com" }, Admin);
+
+        Assert.True(await rig.Env.Get<Alerts.AlertService>().SendToAdminsAsync("Subject", "Body"));
+
+        Assert.Equal(["alex.admin@example.com", "svc@tenant.example"], Assert.Single(rig.Env.State.Outbox).To.Order());
+    }
+
+    [Fact]
     public async Task Scans_made_while_the_service_was_stopped_are_picked_up_on_start()
     {
         await using var rig = await Rig.StartAsync();
