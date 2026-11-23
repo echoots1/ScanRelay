@@ -7,6 +7,12 @@ public sealed record AppSettings
     public string? TenantId { get; init; }
     public string? ClientId { get; init; }
 
+    /// <summary>
+    /// The address people type when they reach the admin screen through a reverse proxy,
+    /// such as https://scan.example.org. Empty when there is no proxy.
+    /// </summary>
+    public string? ProxyAddress { get; init; }
+
     // Who can open the admin screen
     public Guid? AdminGroupId { get; init; }
     public string? AdminGroupName { get; init; }
@@ -34,6 +40,16 @@ public sealed record AppSettings
     /// <summary>True once an admin group is chosen and one of its members has signed in.</summary>
     public bool SetupComplete { get; init; }
 
+    /// <summary>The proxy address in its plain form, or null when it is empty or not a usable address.</summary>
+    public string? ProxyUrl() => NormalizeAddress(ProxyAddress);
+
+    private static string? NormalizeAddress(string? address)
+    {
+        if (!Uri.TryCreate(address?.Trim(), UriKind.Absolute, out var uri)) return null;
+        if (uri.Scheme != Uri.UriSchemeHttps || uri.AbsolutePath.Trim('/').Length > 0 || uri.Query.Length > 0 || uri.UserInfo.Length > 0) return null;
+        return uri.GetLeftPart(UriPartial.Authority);
+    }
+
     public IReadOnlyList<string> AllowedExtensions() =>
         [.. AllowedFileTypes
             .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -51,6 +67,11 @@ public sealed record AppSettings
         if (JobHistoryDays < FileRetentionDays) problems.Add("Job history cannot be shorter than file retention.");
         if (AllowedExtensions().Count == 0) problems.Add("At least one file type must be allowed.");
         if (AllowedExtensions().Any(e => e.Any(c => !char.IsAsciiLetterOrDigit(c)))) problems.Add("File types may only contain letters and digits.");
+        if (!string.IsNullOrWhiteSpace(ProxyAddress) && NormalizeAddress(ProxyAddress) is null)
+        {
+            problems.Add("The proxy address must be a full HTTPS address with no path, such as https://scan.example.org.");
+        }
+
         if (!OneDrivePath.TryParse(OneDriveFolder, out _, out var folderError)) problems.Add(folderError!);
         if (!FileNaming.IsValidTemplate(FileNameTemplate, out var templateError)) problems.Add(templateError!);
         return problems;

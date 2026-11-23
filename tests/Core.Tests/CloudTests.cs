@@ -39,6 +39,35 @@ public class CloudTests
     }
 
     [Fact]
+    public async Task A_proxy_address_is_added_to_the_registration_when_setup_runs_again()
+    {
+        await using var env = await TestEnvironment.StartAsync();
+        var app = await env.ConnectAsync();
+        await env.Settings.UpdateAsync(s => s with { ProxyAddress = "https://scan.example.org/" }, Core.Audit.Actor.Setup);
+
+        await env.ConnectAsync();
+
+        Assert.Equal(
+            ["https://scanserver.example:8443/signin-oidc", "https://localhost:8443/signin-oidc", "https://scan.example.org/signin-oidc"],
+            app.RedirectUris);
+    }
+
+    [Theory]
+    [InlineData("https://scan.example.org", "https://scan.example.org")]
+    [InlineData(" https://Scan.Example.org:8443/ ", "https://scan.example.org:8443")]
+    [InlineData("http://scan.example.org", null)]
+    [InlineData("https://scan.example.org/admin", null)]
+    [InlineData("scan.example.org", null)]
+    [InlineData("", null)]
+    public void A_proxy_address_must_be_a_plain_https_address(string value, string? expected)
+    {
+        var settings = new AppSettings { ProxyAddress = value };
+
+        Assert.Equal(expected, settings.ProxyUrl());
+        Assert.Equal(expected is null && value.Length > 0, settings.Validate().Count > 0);
+    }
+
+    [Fact]
     public async Task The_service_signs_in_with_its_certificate_and_sees_what_was_approved()
     {
         await using var env = await TestEnvironment.StartAsync();

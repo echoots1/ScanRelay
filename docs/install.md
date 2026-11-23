@@ -125,9 +125,12 @@ Entra works either way.
   install or later through Modify. No warning when browsers already trust its
   issuer.
 - **Behind a reverse proxy.** Keep the default certificate and point the
-  proxy at the service. The proxy must pass the original host name through,
-  and the admin screen's address in the installer must be the address people
-  type.
+  proxy at the service over HTTPS. Then, in Settings under Reverse proxy, enter
+  the address people type, such as `https://scan.your-organisation.example`,
+  and add it to the app registration: press "Run the Entra setup again", or
+  add the redirect address the page shows by hand in the Entra admin centre.
+  Without both, sign-in through the proxy fails with a redirect address error.
+  The proxy must pass WebSocket connections through.
 
 A renewed or replaced certificate is assigned the same way. The admins get an
 email 30 days before a certificate expires.

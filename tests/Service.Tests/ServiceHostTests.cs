@@ -170,6 +170,50 @@ public sealed class ServiceHostTests : IAsyncLifetime
         Assert.Contains(await db.AuditLog.ToListAsync(), a => a.Action == "Setup finished" && a.ActorName == "Alex Admin");
     }
 
+    [Theory]
+    [InlineData("scan.example.org", null)]
+    [InlineData("localhost", "203.0.113.9")]
+    public async Task Through_a_reverse_proxy_sign_in_returns_to_the_proxys_address(string host, string? forwardedFor)
+    {
+        await ConnectAsync();
+        await SignInAsync(Client(), _admin);
+        await Get<SettingsStore>().UpdateAsync(s => s with { ProxyAddress = "https://scan.example.org" }, Actor.Setup);
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri($"https://{host}") });
+        if (forwardedFor is not null) client.DefaultRequestHeaders.Add("X-Forwarded-For", forwardedFor);
+
+        var challenge = await client.GetAsync("/signin");
+
+        var query = System.Web.HttpUtility.ParseQueryString(challenge.Headers.Location!.Query);
+        Assert.Equal("https://scan.example.org/signin-oidc", query["redirect_uri"]);
+    }
+
+    [Fact]
+    public async Task Without_a_proxy_address_sign_in_returns_to_the_address_that_was_used()
+    {
+        await ConnectAsync();
+        await SignInAsync(Client(), _admin);
+
+        var challenge = await Client().GetAsync("/signin");
+
+        Assert.Equal("https://localhost/signin-oidc", System.Web.HttpUtility.ParseQueryString(challenge.Headers.Location!.Query)["redirect_uri"]);
+    }
+
+    [Fact]
+    public async Task Signing_in_through_the_proxy_works_from_start_to_finish()
+    {
+        await ConnectAsync();
+        await SignInAsync(Client(), _admin);
+        await Get<SettingsStore>().UpdateAsync(s => s with { ProxyAddress = "https://scan.example.org" }, Actor.Setup);
+        _remoteAddress = IPAddress.Parse("10.0.0.5");
+        var viaProxy = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://scan.example.org") });
+        viaProxy.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.9");
+
+        var landed = await SignInAsync(viaProxy, _admin, "/jobs");
+
+        Assert.Equal("/jobs", landed);
+        Assert.Equal(HttpStatusCode.OK, (await viaProxy.GetAsync("/jobs")).StatusCode);
+    }
+
     [Fact]
     public async Task A_helpdesk_sign_in_does_not_finish_setup()
     {

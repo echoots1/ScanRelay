@@ -59,6 +59,21 @@
         }
     </div>
 
+    <h2>Reverse proxy</h2>
+    <div class="panel">
+        <div class="field"><label for="s-proxy">Address people use through the proxy (optional)</label>
+            <input id="s-proxy" type="text" value="@_s.ProxyAddress" @onchange="e => _s = _s with { ProxyAddress = Text(e) is { Length: > 0 } v ? v : null }" placeholder="https://scan.your-organisation.example" />
+            <div class="hint">Leave empty if people open the admin screen at <span class="code">@Install.Url</span> directly. Fill it in if they reach it through a reverse proxy under another name, or sign-in will fail with a redirect address error.</div></div>
+        @if (_savedProxy is not null)
+        {
+            <div class="banner info small">
+                <strong>The app registration must know this address too.</strong> Either press "Run the Entra setup again" below the connection details, or add this redirect address by hand in the Entra admin centre, under the ScanRelay app registration, Authentication, Web:
+                <pre class="code">@AppRegistration.RedirectUri(_savedProxy)</pre>
+                The proxy must pass WebSocket connections through, and must reach the service over HTTPS.
+            </div>
+        }
+    </div>
+
     <h2>Who can open the admin screen</h2>
     <div class="panel">
         <GroupPicker Label="Admin group" GroupId="_s.AdminGroupId" GroupName="@_s.AdminGroupName"
@@ -154,11 +169,13 @@
     private IReadOnlyList<HealthItem>? _health;
 
     private IReadOnlyList<ChangedSetting> _review = [];
+    private string? _savedProxy;
 
     protected override async Task LoadAsync()
     {
         _s = await Store.GetAsync();
         _review = await Review.GetPendingAsync();
+        _savedProxy = _s.ProxyUrl();
     }
 
     private static int Int(ChangeEventArgs e, int fallback) => int.TryParse(e.Value?.ToString(), out var v) ? v : fallback;

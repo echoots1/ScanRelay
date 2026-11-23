@@ -10,7 +10,7 @@ public sealed record RequiredPermission(string Name, Guid Id, bool IsApplication
 /// Creates or repairs the Entra app registration with the signed-in admin's own access.
 /// Nothing from that sign-in is kept once this finishes.
 /// </summary>
-public sealed class AppRegistration(HttpClient http, InstallConfig install, GraphCertificate certificate, TimeProvider time)
+public sealed class AppRegistration(HttpClient http, InstallConfig install, GraphCertificate certificate, Settings.SettingsStore settings, TimeProvider time)
 {
     public const string DisplayName = "ScanRelay";
     public const string MicrosoftGraphAppId = "00000003-0000-0000-c000-000000000000";
@@ -41,7 +41,7 @@ public sealed class AppRegistration(HttpClient http, InstallConfig install, Grap
 
         var cert = certificate.Get();
         // Both the server's name and localhost, so signing in works from the server itself too.
-        string[] ours = [RedirectUri(install.Url), RedirectUri(install.LocalUrl())];
+        var ours = await RedirectUrisAsync(ct);
         var found = await graph.GetAsync($"applications?$filter=displayName eq '{DisplayName}'&$select=id,appId,web,keyCredentials", ct);
         var existing = (found["value"] as JsonArray)?.FirstOrDefault()?.AsObject();
 
@@ -99,6 +99,16 @@ public sealed class AppRegistration(HttpClient http, InstallConfig install, Grap
         }
 
         return new Result(tenantId, appId, created);
+    }
+
+    /// <summary>
+    /// Every address sign-in may return to: the server's name, localhost for use on the server
+    /// itself, and the proxy address when there is one.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> RedirectUrisAsync(CancellationToken ct = default)
+    {
+        var proxy = (await settings.GetAsync(ct)).ProxyUrl();
+        return [.. new[] { install.Url, install.LocalUrl(), proxy }.Where(a => a is not null).Select(a => RedirectUri(a!)).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     /// <summary>The link someone with the right role opens to approve the permissions.</summary>

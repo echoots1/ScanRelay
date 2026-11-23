@@ -147,6 +147,17 @@ public sealed class ConfigureOidc(SettingsStore settings, InstallConfig install)
                 context.TokenEndpointRequest.ClientAssertion = tokens.NewAssertion(s.TenantId!, s.ClientId!);
                 return Task.CompletedTask;
             },
+            // Through a reverse proxy, the address the browser used is the proxy's, and that is where
+            // Entra must send the person back. The proxy may or may not pass its own name on, so
+            // either its name or its forwarding headers count.
+            OnRedirectToIdentityProvider = async context =>
+            {
+                var current = await context.HttpContext.RequestServices.GetRequiredService<SettingsStore>().GetAsync();
+                if (current.ProxyUrl() is { } proxy && AuthSetup.CameThroughProxy(context.Request, proxy))
+                {
+                    context.ProtocolMessage.RedirectUri = AppRegistration.RedirectUri(proxy);
+                }
+            },
             OnTokenValidated = async context =>
             {
                 var services = context.HttpContext.RequestServices;
@@ -196,6 +207,11 @@ public sealed class ConfigureOidc(SettingsStore settings, InstallConfig install)
 
 public static class AuthSetup
 {
+    public static bool CameThroughProxy(HttpRequest request, string proxyUrl) =>
+        string.Equals(request.Host.Host, new Uri(proxyUrl).Host, StringComparison.OrdinalIgnoreCase)
+        || request.Headers.ContainsKey("X-Forwarded-For") || request.Headers.ContainsKey("X-Forwarded-Host") || request.Headers.ContainsKey("Forwarded");
+
+
     /// <summary>How often a signed-in person's group membership is looked at again.</summary>
     public static readonly TimeSpan RecheckRoles = TimeSpan.FromMinutes(30);
 

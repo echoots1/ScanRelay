@@ -63,7 +63,7 @@
             <dl class="kv">
                 <dt>Name</dt><dd>@AppRegistration.DisplayName</dd>
                 <dt>Supported account types</dt><dd>This organisation only (single tenant)</dd>
-                <dt>Redirect addresses (Web)</dt><dd><span class="code">@AppRegistration.RedirectUri(Install.Url)</span> and <span class="code">@AppRegistration.RedirectUri(Install.LocalUrl())</span></dd>
+                <dt>Redirect addresses (Web)</dt><dd>@foreach (var uri in _redirects) { <div><span class="code">@uri</span></div> }</dd>
                 <dt>Certificate</dt><dd><a href="/files/graph-certificate">Download the certificate</a> and upload it under Certificates &amp; secrets. Do not create a client secret.</dd>
             </dl>
             <h3>API permissions on Microsoft Graph</h3>
@@ -198,7 +198,7 @@
         }
         else
         {
-            <p>Sign in as a member of <strong>@(_s.AdminGroupName ?? "the admin group")</strong>. When that works, setup is finished: every page needs sign-in from then on, and the screen can be opened from other computers at <span class="code">@Install.Url</span>.</p>
+            <p>Sign in as a member of <strong>@(_s.AdminGroupName ?? "the admin group")</strong>. When that works, setup is finished: every page needs sign-in from then on, and the screen can be opened from other computers at <span class="code">@(_s.ProxyUrl() ?? Install.Url)</span>.</p>
             <p class="hint">Until a member has signed in successfully, this screen stays open on the server itself. A wrong group therefore cannot lock everyone out.</p>
             @if (_finalHealth is not null)
             {
@@ -222,6 +222,7 @@
     private static readonly string[] StepNames = ["Entra", "Admin group", "Sync group", "Alert mailbox", "First printer", "Test scan", "Finish"];
 
     private AppSettings? _s;
+    private IReadOnlyList<string> _redirects = [];
     private int _step = -1;
     private bool _byHand;
     private string _handTenant = "";
@@ -255,6 +256,7 @@
     protected override async Task LoadAsync()
     {
         _s = await Store.GetAsync();
+        _redirects = await Registration.RedirectUrisAsync();
         await using var db = await Db.CreateDbContextAsync();
         _printerCount = await db.Printers.CountAsync();
         _recent = await db.Jobs.AsNoTracking().OrderByDescending(j => j.DetectedUtc).Take(5).ToListAsync();
