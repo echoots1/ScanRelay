@@ -113,6 +113,10 @@ public static class ServiceHost
         // The Graph token is kept: it is tied to the tenant and registration, and a new one is fetched when those change.
         settings.Changed += _ => cache.TryRemove(Schemes.Oidc);
 
+        // Removing the admin group puts the screen back into setup; choosing one and signing in ends it.
+        var gate = app.Services.GetRequiredService<SetupGate>();
+        settings.Changed += _ => gate.RefreshAsync().GetAwaiter().GetResult();
+
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ScanRelay");
         var install = app.Services.GetRequiredService<InstallConfig>();
         logger.LogInformation("ScanRelay {Version} starting. Admin screen: {Url}", ModuleHost.AppVersion, install.Url);

@@ -1,12 +1,17 @@
 @page "/runs"
 @inherits PageBase
 @inject DirectorySync Sync
+@inject SettingsStore Settings
 
 <PageTitle>Runs · ScanRelay</PageTitle>
 <h1>Runs</h1>
 <p class="lead">Every sync run and every push to a printer. A sync reads the groups, then hands each printer that differs its full list.</p>
 <Messages Notice="@Notice" Error="@Error" />
 
+@if (_noSyncGroup)
+{
+    <div class="banner warn">No sync group is chosen, so syncing is stopped. Everything on the printers stays as it is.@(IsAdmin ? " Choose one in Settings to start again." : "")</div>
+}
 @if (IsAdmin)
 {
     <div class="toolbar">
@@ -118,11 +123,13 @@
 @code {
     private List<Run> _runs = [];
     private readonly HashSet<int> _open = [];
+    private bool _noSyncGroup;
 
     protected override TimeSpan? RefreshEvery => TimeSpan.FromSeconds(5);
 
     protected override async Task LoadAsync()
     {
+        _noSyncGroup = (await Settings.GetAsync()).DefaultSyncGroupId is null;
         await using var db = await Db.CreateDbContextAsync();
         _runs = await db.Runs.AsNoTracking().Include(r => r.Pushes).ThenInclude(p => p.Printer)
             .OrderByDescending(r => r.StartedUtc).Take(100).AsSplitQuery().ToListAsync();

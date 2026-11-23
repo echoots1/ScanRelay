@@ -215,6 +215,32 @@ public sealed class ServiceHostTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Removing_the_admin_group_puts_the_screen_back_into_setup_on_the_server_only()
+    {
+        await ConnectAsync();
+        var admin = Client();
+        await SignInAsync(admin, _admin);
+        Assert.Equal(HttpStatusCode.Redirect, (await Client().GetAsync("/settings")).StatusCode);
+
+        // What the Settings page does when the admin group is removed.
+        await Get<SettingsStore>().UpdateAsync(s => s with { AdminGroupId = null, AdminGroupName = null, SetupComplete = false }, Actor.Setup);
+
+        Assert.Equal(HttpStatusCode.OK, (await Client().GetAsync("/setup")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await Client().GetAsync("/signin")).StatusCode);
+        Assert.Equal("/setup", (await Client().GetAsync("/signin")).Headers.Location!.ToString());
+        _remoteAddress = IPAddress.Parse("203.0.113.9");
+        Assert.Equal(HttpStatusCode.Forbidden, (await admin.GetAsync("/settings")).StatusCode);
+
+        // Choosing a group again on the server and signing in closes the window again.
+        _remoteAddress = IPAddress.Loopback;
+        var admins = _cloud.State.Groups.Values.Single(g => g.DisplayName == "Admins");
+        await Get<SettingsStore>().UpdateAsync(s => s with { AdminGroupId = admins.Id }, Actor.Setup);
+        await SignInAsync(Client(), _admin);
+        Assert.True((await Get<SettingsStore>().GetAsync()).SetupComplete);
+        Assert.Equal(HttpStatusCode.Redirect, (await Client().GetAsync("/settings")).StatusCode);
+    }
+
+    [Fact]
     public async Task A_helpdesk_sign_in_does_not_finish_setup()
     {
         await ConnectAsync();

@@ -188,6 +188,19 @@ await page.getByText('share-password').waitFor();
 await shot(page, 'settings');
 log('settings save, refuse a bad value, and run the health check');
 
+const syncField = page.locator('.field', { has: page.getByText('Default sync group', { exact: true }) });
+await syncField.getByRole('button', { name: 'Remove' }).click();
+await syncField.getByText('Removing the sync group stops syncing').waitFor();
+await syncField.getByRole('button', { name: 'Yes, remove it' }).click();
+await page.getByText('The sync group was removed.').waitFor();
+await page.getByRole('link', { name: 'Runs' }).click();
+await page.getByText('No sync group is chosen, so syncing is stopped.').waitFor();
+assert.equal((await state()).printerEntries.length, 7, 'removing the sync group must leave the printers as they are');
+await page.getByRole('link', { name: 'Settings' }).click();
+await pickGroup(page, 'Default sync group', 'All', 'All Staff');
+await page.getByText('The sync group was changed and saved.').waitFor();
+log('the sync group can be removed, which stops syncing and changes nothing, and chosen again');
+
 await page.getByRole('link', { name: 'People' }).click();
 await page.getByLabel('Search the tenant').fill('Manual');
 await page.getByRole('button', { name: 'Search the tenant' }).click();

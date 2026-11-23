@@ -76,19 +76,22 @@
 
     <h2>Who can open the admin screen</h2>
     <div class="panel">
-        <GroupPicker Label="Admin group" GroupId="_s.AdminGroupId" GroupName="@_s.AdminGroupName"
-                     Hint="Members can do everything here and receive the alert emails."
+        <GroupPicker Label="Admin group" AllowNone="true" GroupId="_s.AdminGroupId" GroupName="@_s.AdminGroupName"
+                     Hint="Members can do everything here and receive the alert emails. Choosing another group replaces this one."
+                     RemoveWarning="Removing the admin group puts the admin screen back into setup: nobody can sign in, and it answers only on the server itself, with no sign-in, until a new admin group is chosen there and one of its members signs in. Scans and syncs keep running."
                      Changed="g => SetAdminGroupAsync(g)" />
         <GroupPicker Label="Helpdesk group (optional)" AllowNone="true" GroupId="_s.HelpdeskGroupId" GroupName="@_s.HelpdeskGroupName"
                      Hint="Members can view jobs and runs, and re-run them. Nothing else."
-                     Changed="g => { _s = _s with { HelpdeskGroupId = g?.Id, HelpdeskGroupName = g?.DisplayName }; }" />
+                     RemoveWarning="Removing the helpdesk group takes access away from its members the next time their sign-in is checked, within half an hour."
+                     Changed="g => SetHelpdeskGroupAsync(g)" />
     </div>
 
     <h2>Who can scan</h2>
     <div class="panel">
-        <GroupPicker Label="Default sync group" GroupId="_s.DefaultSyncGroupId" GroupName="@_s.DefaultSyncGroupName"
+        <GroupPicker Label="Default sync group" AllowNone="true" GroupId="_s.DefaultSyncGroupId" GroupName="@_s.DefaultSyncGroupName"
                      Hint="Everyone who can scan. Members of groups inside it count too."
-                     Changed="g => { if (g is not null) _s = _s with { DefaultSyncGroupId = g.Id, DefaultSyncGroupName = g.DisplayName }; }" />
+                     RemoveWarning="Removing the sync group stops syncing. Nobody is taken off the printers and no folders are removed: everything stays as it is now, and scans keep being delivered, until a group is chosen again."
+                     Changed="g => SetSyncGroupAsync(g)" />
         <div class="field"><label for="s-interval">Sync interval, in minutes</label>
             <input id="s-interval" type="number" min="5" max="1440" value="@_s.SyncIntervalMinutes" @onchange="e => _s = _s with { SyncIntervalMinutes = Int(e, _s.SyncIntervalMinutes) }" /></div>
         <div class="field"><label for="s-guard">Change guard limit</label>
@@ -196,9 +199,27 @@
         }
     }
 
+    private Task SetHelpdeskGroupAsync(DirectoryGroup? g) => SetGroupAsync(
+        g is null ? "The helpdesk group was removed." : "The helpdesk group was changed and saved.",
+        x => x with { HelpdeskGroupId = g?.Id, HelpdeskGroupName = g?.DisplayName });
+
+    private Task SetSyncGroupAsync(DirectoryGroup? g) => SetGroupAsync(
+        g is null ? "The sync group was removed. Syncing is stopped until one is chosen." : "The sync group was changed and saved. It takes effect at the next sync.",
+        x => x with { DefaultSyncGroupId = g?.Id, DefaultSyncGroupName = g?.DisplayName });
+
+    /// <summary>Group choices are saved at once, so what the page shows is what is in force.</summary>
+    private Task SetGroupAsync(string done, Func<AppSettings, AppSettings> change) => DoAsync(() => Store.UpdateAsync(change, Actor), done);
+
     private Task SetAdminGroupAsync(DirectoryGroup? group) => DoAsync(async () =>
     {
-        if (group is null) return null;
+        if (group is null)
+        {
+            // With no admin group nobody could sign in, so the screen goes back to setup, open on the server only.
+            await Store.UpdateAsync(x => x with { AdminGroupId = null, AdminGroupName = null, SetupComplete = false }, Actor);
+            await Audit.WriteAsync(Actor, "Admin group removed", detail: "The admin screen is back in setup and answers only on the server itself.");
+            Nav.NavigateTo("/setup", forceLoad: true);
+            return null;
+        }
 
         // Changing the admin group to one you are not in would lock you out.
         if (Actor.Id is { } me && !await Cloud.IsMemberAsync(me, group.Id))
@@ -206,8 +227,7 @@
             return $"You are not a member of {group.DisplayName}. Choosing it would lock you out, so it was not changed.";
         }
 
-        var pending = _s!;
-        await Store.SaveAsync(pending with { AdminGroupId = group.Id, AdminGroupName = group.DisplayName }, Actor);
+        await Store.UpdateAsync(x => x with { AdminGroupId = group.Id, AdminGroupName = group.DisplayName }, Actor);
         return null;
     }, "The admin group was changed and saved.");
 

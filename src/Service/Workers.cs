@@ -144,6 +144,9 @@ public sealed class ScheduleWorker(
                 // Nothing below can work until the Entra connection and the first sign-in are done.
                 if (!s.SetupComplete) continue;
 
+                // With no sync group chosen, syncing is stopped. Nothing is added or removed until one is chosen.
+                if (s.DefaultSyncGroupId is null) continue;
+
                 var firstSync = _lastSync == DateTimeOffset.MinValue && now - started >= TimeSpan.FromMinutes(1);
                 if (firstSync || (_lastSync != DateTimeOffset.MinValue && now - _lastSync >= TimeSpan.FromMinutes(s.SyncIntervalMinutes)))
                 {
