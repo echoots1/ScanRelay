@@ -21,7 +21,9 @@ These are the models the first modules are for. Firmware versions are still to c
 | Canon | imageCLASS MF650C series | Same. |
 | Canon | imageCLASS MF751Cdw II | Same. |
 
-No Brother model is on the list yet.
+The only Brother named so far is the HL-3170CDW, which is a printer with no
+scanner, so it cannot have a module. No Brother model that scans is on the
+list yet.
 
 **The Canon models change the Canon plan.** The spec's Canon method (build
 Canon's address book CSV and upload it on the import page, or copy it with
