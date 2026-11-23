@@ -36,7 +36,7 @@ public sealed class SampleAdapter(ModuleContext context) : IDeviceAdapter
     public async Task<IReadOnlyList<Entry>?> ReadManagedAsync(Device device, CancellationToken cancellationToken = default)
     {
         var slots = await ReadSlotsAsync(device, cancellationToken);
-        return [.. slots.Select(s => new Entry(s.Key ?? "", s.Name, new ScanDestination(ParseProtocol(s.Protocol), s.Host, s.Path, s.User, "")))];
+        return [.. slots.Select(s => new Entry(s.Key ?? "", s.Name, new ScanDestination(ParseProtocol(s.Protocol), s.Host, s.Path, s.User, ""), s.Email))];
     }
 
     public async Task<ApplyResult> ApplyAsync(Device device, IReadOnlyList<Entry> wanted, CancellationToken cancellationToken = default)
@@ -86,12 +86,12 @@ public sealed class SampleAdapter(ModuleContext context) : IDeviceAdapter
 
     public Task<ImportFile> ExportAsync(Device device, IReadOnlyList<Entry> wanted, CancellationToken cancellationToken = default)
     {
-        var csv = new StringBuilder("slot,name,protocol,host,path,user\r\n");
+        var csv = new StringBuilder("slot,name,protocol,host,path,user,email\r\n");
         var number = RangeLow;
         foreach (var e in wanted)
         {
             csv.Append(number++).Append(',').Append(Quote(e.DisplayName)).Append(',').Append(e.Destination.Protocol.ToString().ToLowerInvariant()).Append(',')
-                .Append(Quote(e.Destination.Host)).Append(',').Append(Quote(e.Destination.Path)).Append(',').Append(Quote(e.Destination.UserName)).Append("\r\n");
+                .Append(Quote(e.Destination.Host)).Append(',').Append(Quote(e.Destination.Path)).Append(',').Append(Quote(e.Destination.UserName)).Append(',').Append(Quote(e.Email ?? "")).Append("\r\n");
         }
 
         // The password is left out of a file that will sit in someone's downloads.
@@ -121,7 +121,7 @@ public sealed class SampleAdapter(ModuleContext context) : IDeviceAdapter
     }
 
     private static SlotRecord ToSlot(Entry e) => new(
-        0, e.DisplayName, e.Key, e.Destination.Protocol.ToString().ToLowerInvariant(), e.Destination.Host, e.Destination.Path, e.Destination.UserName, e.Destination.Password);
+        0, e.DisplayName, e.Key, e.Destination.Protocol.ToString().ToLowerInvariant(), e.Destination.Host, e.Destination.Path, e.Destination.UserName, e.Destination.Password, e.Email);
 
     private static ScanProtocol ParseProtocol(string value) => Enum.TryParse<ScanProtocol>(value, true, out var p) ? p : ScanProtocol.Smb;
 
@@ -133,5 +133,6 @@ public sealed class SampleAdapter(ModuleContext context) : IDeviceAdapter
 
     private sealed record SlotRecord(
         int Slot, string Name, string? Key, string Protocol, string Host, string Path, string User,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Password);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Password,
+        string? Email = null);
 }

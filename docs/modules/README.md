@@ -57,7 +57,10 @@ not document it.
   part is a server name with no backslashes, a path, port 445, a sign-in name
   and a password.
 - **What the module owns.** Contacts whose folder ends in a person's id and
-  that have no email, fax or FTP destination. Nothing else is changed or
+  that have no fax or FTP destination. Each one also carries the person's own
+  email address, so the printer's scan to email works from the same contact.
+  That is a setting and is on by default. It is new and has not been tried on
+  a real printer yet. Nothing else is changed or
   removed, whatever its number. New contacts get numbers from a reserved range,
   100 to 199 by default; the range is a per-printer setting. The M8124cidn
   accepts number 150; its upper limit is not known.

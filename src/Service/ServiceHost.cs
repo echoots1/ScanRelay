@@ -171,7 +171,7 @@ public static class ServiceHost
             await using var db = await factory.CreateDbContextAsync();
             var printer = await db.Printers.Include(p => p.Entries).FirstOrDefaultAsync(p => p.Id == id);
             if (printer is null) return Results.NotFound();
-            var wanted = printer.Entries.Select(e => new WantedEntry(e.PersonId, e.DisplayName)).OrderBy(e => e.DisplayName).ToList();
+            var wanted = printer.Entries.Select(e => new WantedEntry(e.PersonId, e.DisplayName, e.Email)).OrderBy(e => e.DisplayName).ToList();
             var file = await printers.ExportAsync(printer, wanted);
             if (file is null) return Results.NotFound("This printer's module could not produce an import file.");
             await audit.WriteAsync(ToActor(user), "Import file downloaded", printer.Name);

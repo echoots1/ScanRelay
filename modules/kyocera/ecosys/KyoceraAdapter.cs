@@ -8,7 +8,7 @@ namespace ScanRelay.Modules.KyoceraEcosys;
 /// Keeps a Kyocera ECOSYS address book in step with the list of people.
 ///
 /// What this module owns on the printer: contacts whose folder points into the ScanRelay
-/// share and ends in a person's id. Nothing else is ever changed or removed, whatever
+/// share and ends in a person's id, and that have no fax or FTP destination. Nothing else is ever changed or removed, whatever
 /// number it has. New contacts are given numbers from the reserved range only.
 /// </summary>
 public sealed partial class KyoceraAdapter(ModuleContext context) : IDeviceAdapter
@@ -38,7 +38,7 @@ public sealed partial class KyoceraAdapter(ModuleContext context) : IDeviceAdapt
     {
         var all = await Client(device).ReadAllAsync(cancellationToken);
         return [.. all.Select(c => (Contact: c, Key: KeyOf(c))).Where(x => x.Key is not null)
-            .Select(x => new Entry(x.Key!, x.Contact.Name, new ScanDestination(ScanProtocol.Smb, x.Contact.SmbServer, x.Contact.SmbPath, x.Contact.SmbLoginName, "")))];
+            .Select(x => new Entry(x.Key!, x.Contact.Name, new ScanDestination(ScanProtocol.Smb, x.Contact.SmbServer, x.Contact.SmbPath, x.Contact.SmbLoginName, ""), x.Contact.Email.Length > 0 ? x.Contact.Email : null))];
     }
 
     public async Task<ApplyResult> ApplyAsync(Device device, IReadOnlyList<Entry> wanted, CancellationToken cancellationToken = default)
@@ -71,9 +71,10 @@ public sealed partial class KyoceraAdapter(ModuleContext context) : IDeviceAdapt
                     // A printer that does not give passwords back cannot be compared on them, so the password is left out of the comparison then.
                     var same = existing.Name == target.Name && existing.SmbServer.Equals(target.SmbServer, StringComparison.OrdinalIgnoreCase)
                         && SamePath(existing.SmbPath, target.SmbPath) && existing.SmbPort == target.SmbPort && existing.SmbLoginName == target.SmbLoginName
-                        && (existing.SmbPassword.Length == 0 || existing.SmbPassword == target.SmbPassword);
+                        && (existing.SmbPassword.Length == 0 || existing.SmbPassword == target.SmbPassword)
+                        && existing.Email.Equals(target.Email, StringComparison.OrdinalIgnoreCase);
                     if (same) continue;
-                    await client.UpdateAsync(target with { Id = existing.Id }, cancellationToken);
+                    await client.UpdateAsync(target with { Id = existing.Id }, cancellationToken, clearEmail: target.Email.Length == 0 && existing.Email.Length > 0);
                     updated++;
                 }
                 else
@@ -104,13 +105,13 @@ public sealed partial class KyoceraAdapter(ModuleContext context) : IDeviceAdapt
         // A plain list for typing in at the panel or in Command Center RX. The password is left out
         // of a file that will sit in someone's downloads; it is shown under Settings, Printer account.
         var (first, _) = Range(device);
-        var csv = new StringBuilder("Number,Name,Host name,Path,Port,Login user name\r\n");
+        var csv = new StringBuilder("Number,Name,Host name,Path,Port,Login user name,E-mail address\r\n");
         var number = first;
         foreach (var e in wanted)
         {
             var c = ToContact(e, number++);
             csv.Append(c.Id).Append(',').Append(Quote(c.Name)).Append(',').Append(Quote(c.SmbServer)).Append(',')
-                .Append(Quote(c.SmbPath)).Append(',').Append(c.SmbPort).Append(',').Append(Quote(c.SmbLoginName)).Append("\r\n");
+                .Append(Quote(c.SmbPath)).Append(',').Append(c.SmbPort).Append(',').Append(Quote(c.SmbLoginName)).Append(',').Append(Quote(c.Email)).Append("\r\n");
         }
 
         return Task.FromResult(new ImportFile("kyocera-address-book.csv", "text/csv", Encoding.UTF8.GetBytes(csv.ToString())));
@@ -119,7 +120,8 @@ public sealed partial class KyoceraAdapter(ModuleContext context) : IDeviceAdapt
     /// <summary>The person a contact belongs to, or null when the contact is not one of ours.</summary>
     public static string? KeyOf(Contact contact)
     {
-        // Ours point at a folder named with a person's id, and carry no email, fax or FTP destination.
+        // Ours point at a folder named with a person's id, and carry no fax or FTP destination.
+        // An email address is part of ours: it is the person's own, so scan to email works from the same contact.
         if (contact.HasOtherDestinations) return null;
         var match = OurPath().Match(contact.SmbPath);
         return match.Success ? match.Groups["id"].Value.ToLowerInvariant() : null;
@@ -136,7 +138,8 @@ public sealed partial class KyoceraAdapter(ModuleContext context) : IDeviceAdapt
             445,
             entry.Destination.UserName,
             entry.Destination.Password,
-            HasOtherDestinations: false);
+            HasOtherDestinations: false,
+            Email: entry.Email?.Trim() ?? "");
     }
 
     private static bool SamePath(string a, string b) =>

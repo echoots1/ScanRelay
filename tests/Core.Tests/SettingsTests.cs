@@ -24,6 +24,7 @@ public class SettingsTests
         Assert.Equal(90, s.JobHistoryDays);
         Assert.Equal(5, s.ChangeGuardLimit);
         Assert.True(s.UpdateCheck);
+        Assert.True(s.IncludeEmail);
         Assert.Null(s.AdminGroupId);
         Assert.False(s.SetupComplete);
         Assert.Empty(s.Validate());

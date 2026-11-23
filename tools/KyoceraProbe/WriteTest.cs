@@ -40,13 +40,13 @@ public static class WriteTest
                 return false;
             }
 
-            var test = new Contact(number, TestName, "scanrelay-test", "Scans$\\00000000-0000-4000-8000-00005ca17e57", 445, "scanrelay-test\\tester", "Throwaway1", false);
+            var test = new Contact(number, TestName, "scanrelay-test", "Scans$\\00000000-0000-4000-8000-00005ca17e57", 445, "scanrelay-test\\tester", "Throwaway1", false, "scanrelay-test@example.com");
 
             Say("1. Add the test contact.");
             await client.AddAsync(test, ct);
             var afterAdd = await client.ReadAllAsync(ct);
             var added = afterAdd.FirstOrDefault(c => c.Id == number);
-            Say(added is null ? "   NOT FOUND after adding." : $"   Stored as: name \"{added.Name}\", server \"{added.SmbServer}\", path \"{added.SmbPath}\", port {added.SmbPort}, login \"{added.SmbLoginName}\", password given back: {(added.SmbPassword.Length > 0 ? "yes" : "no")}.");
+            Say(added is null ? "   NOT FOUND after adding." : $"   Stored as: name \"{added.Name}\", server \"{added.SmbServer}\", path \"{added.SmbPath}\", port {added.SmbPort}, login \"{added.SmbLoginName}\", email \"{added.Email}\", password given back: {(added.SmbPassword.Length > 0 ? "yes" : "no")}.");
             Say($"   The module recognises it as its own: {(added is not null && KyoceraAdapter.KeyOf(added) is not null ? "yes" : "NO")}.");
 
             Say("2. Change its name.");
@@ -54,14 +54,19 @@ public static class WriteTest
             var changed = (await client.ReadAllAsync(ct)).FirstOrDefault(c => c.Id == number);
             Say($"   Name is now \"{changed?.Name}\". Folder details kept: {(changed is not null && changed.SmbPath == added?.SmbPath && changed.SmbServer == added?.SmbServer ? "yes" : "NO")}.");
 
-            Say("3. Delete it.");
+            Say("3. Take its email address away.");
+            await client.UpdateAsync(test with { Name = TestName + " 2", Email = "" }, ct, clearEmail: true);
+            var cleared = (await client.ReadAllAsync(ct)).FirstOrDefault(c => c.Id == number);
+            Say($"   Email is now \"{cleared?.Email}\". Folder details kept: {(cleared is not null && cleared.SmbPath == added?.SmbPath ? "yes" : "NO")}.");
+
+            Say("4. Delete it.");
             await client.DeleteAsync(number, ct);
             var after = await client.ReadAllAsync(ct);
             var gone = after.All(c => c.Id != number);
             Say($"   Gone: {(gone ? "yes" : "NO")}.");
 
             var untouched = before.SequenceEqual(after);
-            Say($"4. Every other contact is exactly as it was: {(untouched ? "yes" : "NO")}.");
+            Say($"5. Every other contact is exactly as it was: {(untouched ? "yes" : "NO")}.");
             if (!untouched)
             {
                 foreach (var id in before.Select(c => c.Id).Union(after.Select(c => c.Id)).Order())
@@ -71,8 +76,9 @@ public static class WriteTest
                 }
             }
 
-            var ok = added is not null && changed?.Name == TestName + " 2" && gone && untouched;
-            Say(ok ? "RESULT: the add, change and delete all worked, and nothing else was touched." : "RESULT: something did not go as expected. See above.");
+            var ok = added is not null && added.Email == test.Email && changed?.Name == TestName + " 2" && changed.Email == test.Email
+                && cleared is { Email.Length: 0 } && gone && untouched;
+            Say(ok ? "RESULT: the add, changes and delete all worked, and nothing else was touched." : "RESULT: something did not go as expected. See above.");
             return ok;
         }
         catch (Exception e) when (e is KyoceraException or HttpRequestException or TaskCanceledException)

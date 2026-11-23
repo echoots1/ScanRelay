@@ -29,8 +29,8 @@ public sealed class KyoceraModuleTests : IAsyncLifetime
         _printer.Address, null, null,
         new Dictionary<string, string> { ["port"] = _printer.Port.ToString(), ["secure"] = "false", ["first_number"] = first, ["last_number"] = last });
 
-    private static Entry Person(Guid id, string name) =>
-        new(id.ToString(), name, new ScanDestination(ScanProtocol.Smb, "scanserver", $"{Share}\\{id}", "scanserver\\scanrelay-printer", "share-password"));
+    private static Entry Person(Guid id, string name, string? email = null) =>
+        new(id.ToString(), name, new ScanDestination(ScanProtocol.Smb, "scanserver", $"{Share}\\{id}", "scanserver\\scanrelay-printer", "share-password"), email);
 
     private List<KyoceraContact> Ours => [.. _printer.Contacts.Values.Where(c => c.Id >= 100).OrderBy(c => c.Id)];
 
@@ -144,15 +144,48 @@ public sealed class KyoceraModuleTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_contact_of_ours_that_someone_gave_an_email_address_is_no_longer_ours_to_remove()
+    public async Task A_contact_of_ours_that_someone_gave_a_fax_number_is_no_longer_ours_to_change()
     {
         var ann = Guid.NewGuid();
         await _adapter.ApplyAsync(_device, [Person(ann, "Ann")]);
-        _printer.Contacts[100] = _printer.Contacts[100] with { Email = "ann@example.com" };
+        _printer.Contacts[100] = _printer.Contacts[100] with { Fax = "5550123" };
 
         await _adapter.ApplyAsync(_device, []);
 
+        Assert.Equal("5550123", _printer.Contacts[100].Fax);
+    }
+
+    [Fact]
+    public async Task Each_persons_email_address_goes_on_their_contact_so_scan_to_email_works()
+    {
+        var (ann, bob) = (Guid.NewGuid(), Guid.NewGuid());
+
+        var result = await _adapter.ApplyAsync(_device, [Person(ann, "Ann", "ann@example.com"), Person(bob, "Bob")]);
+
+        Assert.True(result.Succeeded, result.Error);
         Assert.Equal("ann@example.com", _printer.Contacts[100].Email);
+        Assert.Equal($"Scans$\\{ann}", _printer.Contacts[100].SmbPath);
+        Assert.Equal("", _printer.Contacts[101].Email);
+        var read = await _adapter.ReadManagedAsync(_device);
+        Assert.Equal(["ann@example.com", null], read!.Select(e => e.Email));
+    }
+
+    [Fact]
+    public async Task A_changed_or_removed_email_address_is_pushed_and_an_unchanged_one_is_not()
+    {
+        var ann = Guid.NewGuid();
+        await _adapter.ApplyAsync(_device, [Person(ann, "Ann", "ann@example.com")]);
+        var writes = _printer.Writes;
+
+        Assert.Equal(0, (await _adapter.ApplyAsync(_device, [Person(ann, "Ann", "ANN@example.com")])).Updated);
+        Assert.Equal(writes, _printer.Writes);
+
+        Assert.Equal(1, (await _adapter.ApplyAsync(_device, [Person(ann, "Ann", "ann.new@example.com")])).Updated);
+        Assert.Equal("ann.new@example.com", _printer.Contacts[100].Email);
+
+        Assert.Equal(1, (await _adapter.ApplyAsync(_device, [Person(ann, "Ann")])).Updated);
+        Assert.Equal("", _printer.Contacts[100].Email);
+        Assert.Equal($"Scans$\\{ann}", _printer.Contacts[100].SmbPath);
     }
 
     [Fact]
@@ -289,7 +322,7 @@ public sealed class KyoceraModuleTests : IAsyncLifetime
 
         Assert.True(ok, report.ToString());
         Assert.Equal(before, _printer.Contacts.Values.OrderBy(c => c.Id));
-        Assert.Equal(3, _printer.Writes);
+        Assert.Equal(4, _printer.Writes);
         Assert.Contains("nothing else was touched", report.ToString());
         Assert.DoesNotContain("Throwaway1", report.ToString());
         Assert.DoesNotContain("old-password", report.ToString());
@@ -314,7 +347,7 @@ public sealed class KyoceraModuleTests : IAsyncLifetime
         var file = await _adapter.ExportAsync(_device, [Person(Guid.NewGuid(), "Ann \"Annie\" Example")]);
 
         var text = System.Text.Encoding.UTF8.GetString(file.Content);
-        Assert.StartsWith("Number,Name,Host name,Path,Port,Login user name", text);
+        Assert.StartsWith("Number,Name,Host name,Path,Port,Login user name,E-mail address", text);
         Assert.Contains("100,\"Ann \"\"Annie\"\" Example\",\"scanserver\"", text);
         Assert.DoesNotContain("share-password", text);
     }

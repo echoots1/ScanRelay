@@ -23,6 +23,9 @@ public sealed record AppSettings
     public Guid? DefaultSyncGroupId { get; init; }
     public string? DefaultSyncGroupName { get; init; }
     public bool IncludeGuests { get; init; }
+
+    /// <summary>Put each person's email address on their printer entry too, so scan to email works from the same entry.</summary>
+    public bool IncludeEmail { get; init; } = true;
     public int SyncIntervalMinutes { get; init; } = 60;
     public int ChangeGuardLimit { get; init; } = 5;
 

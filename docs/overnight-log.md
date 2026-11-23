@@ -22,3 +22,10 @@ Each one can be reversed; tell me which you disagree with.
 | 15 | Who can read `install.json`? | SYSTEM, Administrators, and the service (read only). | It holds the printer account's password, protected for the machine. That protection alone can be undone by any program on the server, so the file is locked down too. |
 | 16 | Does Uninstall keep the data folder by default? | Yes, the box is ticked by default in the window. The silent uninstall removes it unless told to keep it. | Deleting scans and history should be a deliberate choice. |
 | 17 | What does the printer account's password look like? | 32 letters and digits, with look-alike characters left out and no symbols. | Some printer address books reject symbols, and it may have to be typed by hand. |
+
+## Decisions since
+
+| Question | Answer | Why |
+|----------|--------|-----|
+| Should printer entries carry the person's email address? The spec put scan to email out of scope. | Yes, as a setting that is on by default. The address is the person's mailbox address from Entra; someone with no mailbox gets none. | The owner wants the printer's own scan to email to keep working from the same entry. The app still does not send email itself. |
+| How do people reach the admin screen through a reverse proxy? | A proxy address setting. Sign-in returns to it for proxied requests, and setup adds it to the app registration. | Without it, sign-in through a proxy fails, because Entra only knew the machine name. |

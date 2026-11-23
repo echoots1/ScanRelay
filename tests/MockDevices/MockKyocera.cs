@@ -141,6 +141,12 @@ public sealed class MockKyocera : IAsyncDisposable
                         return Answer("INFORMATION_NOT_FOUND_ERROR");
                     }
 
+                    // A part left out of an update keeps what the printer had. That is an assumption; the write test checks the real thing.
+                    if (operation == "update_personal_address" && entry.Element(Book + "email_information") is null)
+                    {
+                        contact = contact with { Email = Contacts[contact.Id].Email };
+                    }
+
                     Contacts[contact.Id] = contact;
                     Interlocked.Increment(ref Writes);
                 }

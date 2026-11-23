@@ -15,7 +15,8 @@ public sealed record Device(
 /// <param name="Key">Stable id for the entry, the person's directory user id.</param>
 /// <param name="DisplayName">The name shown on the printer panel.</param>
 /// <param name="Destination">Where the printer writes this person's scans.</param>
-public sealed record Entry(string Key, string DisplayName, ScanDestination Destination);
+/// <param name="Email">The person's email address, so the same entry also works for scan to email. Null when it should have none.</param>
+public sealed record Entry(string Key, string DisplayName, ScanDestination Destination, string? Email = null);
 
 /// <summary>A scan-to-folder destination and the account the printer uses to reach it.</summary>
 public sealed record ScanDestination(

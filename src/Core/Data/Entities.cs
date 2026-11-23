@@ -23,6 +23,9 @@ public class Person
     public Guid Id { get; set; }
     public required string DisplayName { get; set; }
     public required string UserPrincipalName { get; set; }
+
+    /// <summary>Their mailbox address, when they have one.</summary>
+    public string? Email { get; set; }
     public PersonSource Source { get; set; }
 
     /// <summary>Excluded on the People page. Kept through every sync.</summary>
@@ -82,6 +85,7 @@ public class PrinterEntry
     public int PrinterId { get; set; }
     public Guid PersonId { get; set; }
     public required string DisplayName { get; set; }
+    public string? Email { get; set; }
     public DateTime PushedUtc { get; set; }
     public Printer Printer { get; set; } = null!;
 }

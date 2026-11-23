@@ -87,6 +87,30 @@ public sealed class SyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Each_persons_email_address_goes_on_their_entry_and_follows_changes()
+    {
+        await AddPrinterAsync();
+        _people[1].Mail = null;
+
+        await RunAsync();
+
+        Assert.Equal(_people[0].Upn, _mock.Managed.Single(e => e.Name == "Ann Example").Email);
+        Assert.Null(_mock.Managed.Single(e => e.Name == "Bob Example").Email);
+
+        _people[0].Mail = "ann.new@example.com";
+        var changed = await RunAsync();
+        Assert.Equal(1, Assert.Single(changed.Pushes).Updated);
+        Assert.Equal("ann.new@example.com", _mock.Managed.Single(e => e.Name == "Ann Example").Email);
+        Assert.Empty((await RunAsync()).Pushes);
+        Assert.Null(await Sync.DriftCheckAsync());
+
+        // Turning the setting off takes the addresses away again.
+        await _env.Settings.UpdateAsync(s => s with { IncludeEmail = false }, Admin);
+        await RunAsync();
+        Assert.All(_mock.Managed, e => Assert.Null(e.Email));
+    }
+
+    [Fact]
     public async Task A_second_sync_with_no_changes_pushes_nothing()
     {
         await AddPrinterAsync();

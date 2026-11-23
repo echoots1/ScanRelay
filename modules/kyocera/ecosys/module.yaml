@@ -1,5 +1,5 @@
 id: kyocera-ecosys
-version: 0.1.0
+version: 0.2.0
 vendor: Kyocera
 family: ECOSYS
 models: [ECOSYS M8124cidn]          # exact model names, added as each is tested
@@ -23,7 +23,7 @@ address_book:
   managed_range: [100, 199]         # contact numbers this module may use. Number 150 is accepted by an M8124cidn; the upper limit is not known.
   one_touch: false
 prerequisites: []
-tested_firmware: ["2P4_S000.002.204"]   # ECOSYS M8124cidn: one contact added, changed and deleted. A full push is still to be tried.
+tested_firmware: ["2P4_S000.002.204"]   # ECOSYS M8124cidn: a full push and a scan to OneDrive, with version 0.1.0. Email on the contact is new in 0.2.0 and not yet tried on a printer.
 options:
   port: "9091"
   secure: "true"                    # false talks plain HTTP, normally on port 9090

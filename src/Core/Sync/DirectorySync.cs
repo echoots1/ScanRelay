@@ -165,7 +165,7 @@ public sealed class DirectorySync(
             {
                 var actual = await printers.ReadBackAsync(printer, ct);
                 if (actual is null) continue;
-                var wanted = printer.Entries.Select(e => new WantedEntry(e.PersonId, e.DisplayName)).OrderBy(e => e.DisplayName).ToList();
+                var wanted = printer.Entries.Select(e => new WantedEntry(e.PersonId, e.DisplayName, e.Email)).OrderBy(e => e.DisplayName).ToList();
                 var same = actual.Count == wanted.Count
                     && actual.OrderBy(a => a.PersonId).SequenceEqual(wanted.OrderBy(w => w.PersonId));
                 if (same) continue;
@@ -278,7 +278,7 @@ public sealed class DirectorySync(
                 wantedByPrinter[printer.Id] = [.. eligible.Values
                     .Where(u => groupMembers.Contains(u.Id) || people.Any(p => p.Id == u.Id && p.Source == PersonSource.Manual
                         && (p.OnAllPrinters || p.Printers.Any(l => l.PrinterId == printer.Id))))
-                    .Select(u => new WantedEntry(u.Id, u.DisplayName))
+                    .Select(u => new WantedEntry(u.Id, u.DisplayName, s.IncludeEmail ? u.Mail : null))
                     .OrderBy(e => e.DisplayName, StringComparer.CurrentCultureIgnoreCase)];
             }
 
@@ -327,6 +327,7 @@ public sealed class DirectorySync(
 
                 person.DisplayName = user.DisplayName;
                 person.UserPrincipalName = user.UserPrincipalName;
+                person.Email = user.Mail;
                 person.LastSeenUtc = now;
                 person.RemovedUtc = null;
                 Directory.CreateDirectory(Path.Combine(data.Inbox, user.Id.ToString()));
@@ -372,7 +373,7 @@ public sealed class DirectorySync(
         if (outcome.Succeeded)
         {
             db.PrinterEntries.RemoveRange(printer.Entries);
-            printer.Entries = [.. wanted.Select(w => new PrinterEntry { PrinterId = printer.Id, PersonId = w.PersonId, DisplayName = w.DisplayName, PushedUtc = push.FinishedUtc.Value })];
+            printer.Entries = [.. wanted.Select(w => new PrinterEntry { PrinterId = printer.Id, PersonId = w.PersonId, DisplayName = w.DisplayName, Email = w.Email, PushedUtc = push.FinishedUtc.Value })];
             logger.LogInformation("Pushed {Count} entries to printer {Printer}", wanted.Count, printer.Name);
         }
         else
@@ -388,14 +389,14 @@ public sealed class DirectorySync(
 
     private static PrinterChange Compare(Printer printer, List<WantedEntry> wanted)
     {
-        var held = printer.Entries.ToDictionary(e => e.PersonId, e => e.DisplayName);
+        var held = printer.Entries.ToDictionary(e => e.PersonId, e => (e.DisplayName, e.Email));
         var want = wanted.ToDictionary(e => e.PersonId, e => e.DisplayName);
         return new PrinterChange(
             printer.Id,
             printer.Name,
             [.. wanted.Where(e => !held.ContainsKey(e.PersonId)).Select(e => e.DisplayName)],
-            [.. held.Where(h => !want.ContainsKey(h.Key)).Select(h => h.Value).Order()],
-            [.. wanted.Where(e => held.TryGetValue(e.PersonId, out var name) && name != e.DisplayName).Select(e => e.DisplayName)],
+            [.. held.Where(h => !want.ContainsKey(h.Key)).Select(h => h.Value.DisplayName).Order()],
+            [.. wanted.Where(e => held.TryGetValue(e.PersonId, out var now) && (now.DisplayName != e.DisplayName || !string.Equals(now.Email, e.Email, StringComparison.OrdinalIgnoreCase))).Select(e => e.DisplayName)],
             wanted.Count);
     }
 

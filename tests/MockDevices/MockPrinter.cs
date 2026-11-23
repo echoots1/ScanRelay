@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace ScanRelay.MockDevices;
 
-public sealed record MockEntry(int Slot, string Name, string? Key, string Protocol, string Host, string Path, string User, string? Password);
+public sealed record MockEntry(int Slot, string Name, string? Key, string Protocol, string Host, string Path, string User, string? Password, string? Email = null);
 
 /// <summary>
 /// A fake printer with an address book, so modules can be tested without hardware.

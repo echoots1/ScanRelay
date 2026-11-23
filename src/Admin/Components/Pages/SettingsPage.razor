@@ -95,6 +95,8 @@
             <input id="s-guard" type="number" min="0" max="10000" value="@_s.ChangeGuardLimit" @onchange="e => _s = _s with { ChangeGuardLimit = Int(e, _s.ChangeGuardLimit) }" />
             <div class="hint">A sync that would remove more entries than this stops and waits for an Admin to approve it on the Runs page.</div></div>
         <label class="check"><input type="checkbox" checked="@_s.IncludeGuests" @onchange="e => _s = _s with { IncludeGuests = (bool)e.Value! }" /> Include guest accounts</label>
+        <label class="check"><input type="checkbox" checked="@_s.IncludeEmail" @onchange="e => _s = _s with { IncludeEmail = (bool)e.Value! }" /> Put each person's email address on their printer entry</label>
+        <div class="hint">With this on, the entry a person picks to scan to their OneDrive also works for the printer's own scan to email. Turning it off removes the addresses at the next sync.</div>
     </div>
 
     <h2>Where scans go</h2>

@@ -4,7 +4,9 @@ using System.Xml.Linq;
 namespace ScanRelay.Modules.KyoceraEcosys;
 
 /// <summary>One contact in the printer's address book, with only the parts this module reads or writes.</summary>
-public sealed record Contact(int Id, string Name, string SmbServer, string SmbPath, int SmbPort, string SmbLoginName, string SmbPassword, bool HasOtherDestinations);
+/// <param name="Email">The contact's email address, empty when it has none.</param>
+/// <param name="HasOtherDestinations">True when it also carries a fax, FTP or internet fax destination, which this module never writes.</param>
+public sealed record Contact(int Id, string Name, string SmbServer, string SmbPath, int SmbPort, string SmbLoginName, string SmbPassword, bool HasOtherDestinations, string Email = "");
 
 public sealed class KyoceraException(string message, string? result = null) : Exception(message)
 {
@@ -75,8 +77,9 @@ public sealed class KyoceraClient(HttpClient http, string baseUrl)
     public Task AddAsync(Contact contact, CancellationToken ct) =>
         CallAsync(Book, "setting/address_book", "add_personal_address", [ToXml(contact)], ct);
 
-    public Task UpdateAsync(Contact contact, CancellationToken ct) =>
-        CallAsync(Book, "setting/address_book", "update_personal_address", [ToXml(contact)], ct);
+    /// <param name="clearEmail">Send an empty email address, to take away one the contact has now.</param>
+    public Task UpdateAsync(Contact contact, CancellationToken ct, bool clearEmail = false) =>
+        CallAsync(Book, "setting/address_book", "update_personal_address", [ToXml(contact, clearEmail)], ct);
 
     public Task DeleteAsync(int id, CancellationToken ct) =>
         CallAsync(Book, "setting/address_book", "delete_personal_address", [new XElement(Book + "personal_address", id)], ct);
@@ -87,19 +90,20 @@ public sealed class KyoceraClient(HttpClient http, string baseUrl)
         var name = entry.Element(Book + "name_information");
         if (!int.TryParse(Text(name, "id"), out var id)) return null;
         var smb = entry.Element(Book + "smb_information");
-        var other = Text(entry.Element(Book + "email_information"), "address").Length > 0
-            || Text(entry.Element(Book + "ftp_information"), "server_name").Length > 0
+        var other = Text(entry.Element(Book + "ftp_information"), "server_name").Length > 0
             || Text(entry.Element(Book + "ifax_information"), "address").Length > 0
             || Text(entry.Element(Book + "fax_information"), "fax_number").Length > 0;
         return new Contact(id, Text(name, "name"), Text(smb, "server_name"), Text(smb, "file_path"),
-            int.TryParse(Text(smb, "port_number"), out var port) ? port : 445, Text(smb, "login_name"), Text(smb, "login_password"), other);
+            int.TryParse(Text(smb, "port_number"), out var port) ? port : 445, Text(smb, "login_name"), Text(smb, "login_password"), other,
+            Text(entry.Element(Book + "email_information"), "address"));
     }
 
-    private static XElement ToXml(Contact c) => new(Book + "personal_address",
+    private static XElement ToXml(Contact c, bool clearEmail = false) => new(Book + "personal_address",
         new XElement(Book + "name_information",
             new XElement(Book + "name", c.Name),
             new XElement(Book + "furigana", c.Name),
             new XElement(Book + "id", c.Id)),
+        c.Email.Length > 0 || clearEmail ? new XElement(Book + "email_information", new XElement(Book + "address", c.Email)) : null,
         new XElement(Book + "smb_information",
             new XElement(Book + "server_name", c.SmbServer),
             new XElement(Book + "file_path", c.SmbPath),

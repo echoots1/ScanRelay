@@ -5,7 +5,7 @@ namespace ScanRelay.Core.Cloud;
 
 public sealed record DirectoryGroup(Guid Id, string DisplayName);
 
-public sealed record DirectoryUser(Guid Id, string DisplayName, string UserPrincipalName, bool Enabled, bool IsGuest);
+public sealed record DirectoryUser(Guid Id, string DisplayName, string UserPrincipalName, bool Enabled, bool IsGuest, string? Mail = null);
 
 public sealed record UploadedItem(string DriveId, string ItemId, string Name);
 
@@ -40,7 +40,7 @@ public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenP
     /// <summary>Upload session pieces must be a multiple of 320 KiB.</summary>
     public int ChunkSize { get; init; } = 320 * 1024 * 32;
 
-    private const string UserFields = "id,displayName,userPrincipalName,accountEnabled,userType";
+    private const string UserFields = "id,displayName,userPrincipalName,accountEnabled,userType,mail";
     private readonly GraphHttp _graph = new(http, install.Cloud.Graph, tokens.GetTokenAsync, time, tokens.Reset);
 
     public async Task<string> GetOrganizationNameAsync(CancellationToken ct = default)
@@ -252,7 +252,8 @@ public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenP
         u["displayName"]?.GetValue<string>() ?? "",
         u["userPrincipalName"]?.GetValue<string>() ?? "",
         u["accountEnabled"]?.GetValue<bool>() ?? true,
-        string.Equals(u["userType"]?.GetValue<string>(), "Guest", StringComparison.OrdinalIgnoreCase));
+        string.Equals(u["userType"]?.GetValue<string>(), "Guest", StringComparison.OrdinalIgnoreCase),
+        u["mail"]?.GetValue<string>() is { Length: > 0 } mail ? mail : null);
 
     /// <summary>Reads at most a fixed number of bytes from a stream it owns.</summary>
     private sealed class BoundedStream : Stream

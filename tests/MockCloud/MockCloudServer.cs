@@ -614,6 +614,7 @@ public sealed partial class MockCloudServer : IAsyncDisposable
         ["userPrincipalName"] = u.Upn,
         ["accountEnabled"] = u.Enabled,
         ["userType"] = u.Guest ? "Guest" : "Member",
+        ["mail"] = u.Mail,
     };
 
     private static JsonObject ItemJson(MockItem i)

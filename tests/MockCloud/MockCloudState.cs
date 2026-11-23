@@ -9,6 +9,9 @@ public sealed record MockUser(Guid Id, string DisplayName, string Upn)
     public bool Guest { get; set; }
     public bool HasDrive { get; set; } = true;
 
+    /// <summary>Their mailbox address. Null for an account with no mailbox.</summary>
+    public string? Mail { get; set; } = Upn;
+
     /// <summary>The OneDrive exists but SharePoint has locked it, as it does for some blocked or unlicensed accounts.</summary>
     public bool DriveLocked { get; set; }
     public string DriveId => "drive-" + Id.ToString("N");

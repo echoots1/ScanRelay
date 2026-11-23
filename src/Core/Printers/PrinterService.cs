@@ -12,7 +12,8 @@ using ScanRelay.ModuleSdk;
 namespace ScanRelay.Core.Printers;
 
 /// <summary>One person as a printer should list them.</summary>
-public sealed record WantedEntry(Guid PersonId, string DisplayName);
+/// <param name="Email">Their email address, when entries carry one so scan to email keeps working.</param>
+public sealed record WantedEntry(Guid PersonId, string DisplayName, string? Email = null);
 
 public sealed record PushOutcome(bool Succeeded, int Added, int Updated, int Removed, string? Error, bool Paused = false);
 
@@ -72,7 +73,7 @@ public sealed class PrinterService(
     {
         Directory.CreateDirectory(Path.Combine(install.DataFolder ?? "", "Inbox", TestEntryId.ToString()));
         await using var db = await factory.CreateDbContextAsync(ct);
-        var held = await db.PrinterEntries.Where(e => e.PrinterId == printer.Id).Select(e => new WantedEntry(e.PersonId, e.DisplayName)).ToListAsync(ct);
+        var held = await db.PrinterEntries.Where(e => e.PrinterId == printer.Id).Select(e => new WantedEntry(e.PersonId, e.DisplayName, e.Email)).ToListAsync(ct);
         return await PushAsync(printer, [.. held, new WantedEntry(TestEntryId, "ScanRelay test")], ct);
     }
 
@@ -83,7 +84,7 @@ public sealed class PrinterService(
         if (module is null) return null;
         var entries = await GuardAsync<IReadOnlyList<Entry>?>(
             token => module.Adapter!.ReadManagedAsync(ToDevice(printer, module), token), _ => null, ct);
-        return entries?.Where(e => Guid.TryParse(e.Key, out _)).Select(e => new WantedEntry(Guid.Parse(e.Key), e.DisplayName)).ToList();
+        return entries?.Where(e => Guid.TryParse(e.Key, out _)).Select(e => new WantedEntry(Guid.Parse(e.Key), e.DisplayName, string.IsNullOrWhiteSpace(e.Email) ? null : e.Email)).ToList();
     }
 
     /// <summary>The file for applying the list by hand when a push fails.</summary>
@@ -180,7 +181,8 @@ public sealed class PrinterService(
                 host,
                 protocol == ScanProtocol.Smb ? $"{share}\\{w.PersonId}" : $"{options.GetValueOrDefault("scan_root", "").TrimEnd('/')}/{w.PersonId}",
                 user,
-                password)))];
+                password),
+            w.Email))];
     }
 
     private async Task<T> GuardAsync<T>(Func<CancellationToken, Task<T>> call, Func<string, T> onError, CancellationToken ct)

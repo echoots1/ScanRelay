@@ -114,6 +114,9 @@ namespace ScanRelay.Core.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Email")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("Excluded")
                         .HasColumnType("INTEGER");
 
@@ -215,6 +218,9 @@ namespace ScanRelay.Core.Data.Migrations
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("PushedUtc")
