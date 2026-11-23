@@ -6,7 +6,7 @@ added.
 | Module | Covers | State |
 |--------|--------|-------|
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
-| `kyocera-ecosys` | ECOSYS M8124cidn | **Built. One contact added, changed and deleted on a real printer.** A full push through the app is still to be tried. See below. |
+| `kyocera-ecosys` | ECOSYS M8124cidn | **Working on a real printer.** A sync pushed the list, a scan at the panel reached OneDrive. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
 | Canon | imageCLASS MF642C, MF650C, MF751Cdw II | **Not started.** After Kyocera. |
 
@@ -45,12 +45,13 @@ not document it.
   `create_personal_address_enumeration` then `get_personal_address_list`, are
   shown in public write-ups. Each entry comes back with its name, its SMB
   server, path, port, sign-in name and password.
-- **Writing works on a real printer, for one contact.** On an ECOSYS
-  M8124cidn (firmware 2P4_S000.002.204) the write test added a contact at
-  number 150, renamed it, deleted it, and confirmed the other 18 contacts were
-  exactly as before. The printer stored the server, path, port and sign-in
-  name as sent. A full push of a real list through the app has not been tried
-  yet.
+- **It works end to end on a real printer.** On an ECOSYS M8124cidn
+  (firmware 2P4_S000.002.204), through the installed app: a sync pushed the
+  list of people, a document was scanned at the panel to a person's entry, and
+  it arrived in their OneDrive. Before that, a one-contact write test added,
+  renamed and deleted a contact at number 150 and confirmed the other 18
+  contacts were exactly as before. Not yet tried on the real printer: joiners
+  and leavers over several syncs, and the nightly drift check.
 - **What an entry looks like, from the real printer.** One contact holds a
   name, a number, and email, FTP, SMB, i-fax and fax details together. The SMB
   part is a server name with no backslashes, a path, port 445, a sign-in name

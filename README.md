@@ -1,9 +1,8 @@
 # ScanRelay
 
-> Status: **built, not yet verified on a real Windows Server or a real tenant.**
-> The service, admin screen, module system and installer exist and pass their
-> automated tests against a mock Microsoft 365 and a mock printer. No module
-> for a real printer exists yet. See [what is and is not verified](docs/plan.md#what-is-verified).
+> Status: **working end to end on one real server, tenant and printer** (a
+> Kyocera ECOSYS M8124cidn). Not yet released, and the full server test has not
+> been run. See [what is and is not verified](docs/plan.md#what-is-verified).
 
 A person picks their name on the printer panel, scans, and the PDF lands in
 `Documents/Scans` in their own OneDrive.

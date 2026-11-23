@@ -1,12 +1,13 @@
 # ScanRelay plan
 
-Status: milestones 0 to 4 and the public-release groundwork are built and pass
-their automated tests. Nothing has been verified on a real Windows Server, a
-real tenant or a real printer yet. The three vendor modules are not started.
-[What is verified](#what-is-verified) says exactly where each part stands, and
-[the overnight log](overnight-log.md) lists the questions answered along the way. The [spec](spec.pdf) says what
-the app does; this document says how it gets built, in what order, and what
-has to be settled first.
+Status: the app works end to end on a real server, a real tenant and one real
+printer. On 2026-11-23 a sync read an Entra group, pushed the list to a Kyocera
+ECOSYS M8124cidn, a document was scanned at the panel to a person's entry, and
+it arrived in that person's OneDrive. That is one printer model, one tenant and
+one person's scan; the rest of [the server test](server-test.md) has not been
+run. The Canon module is not started. [What is verified](#what-is-verified)
+says where each part stands, and [the overnight log](overnight-log.md) lists
+the questions answered along the way.
 
 ## 1. Gaps found in the spec
 
@@ -110,7 +111,7 @@ These follow the spec's build order.
 | M2. Jobs | Built and tested: intake, upload, retries, retention, re-run, alerts, Jobs page, Dashboard. |
 | M3. People and sync | Built and tested: groups, manual people, exclusions, folders, preview, change guard, Runs and People pages. |
 | M4. Module system | Built and tested with the sample module and mock printer: SDK, packaging, signing, catalog, module host, Printers and Modules pages, update check, drift check. |
-| M5. Kyocera module | **Built. A one-contact add, change and delete passed on a real ECOSYS M8124cidn**, with every other contact confirmed untouched. A full push of a real list through the installed app is still to be tried. See [modules](modules/README.md). |
+| M5. Kyocera module | **Working on a real ECOSYS M8124cidn** (firmware 2P4_S000.002.204): sync, push, scan at the panel, file in OneDrive. Not yet tried: joiners and leavers over time, the drift check, and sign-in to the printer's service. See [modules](modules/README.md). |
 | M6. Brother module | **Dropped from the first version.** No Brother that scans is in use. |
 | M7. Canon module | **Not started.** After Kyocera. The models are imageCLASS MF, not the imageRUNNER ADVANCE the spec's method is for, so the method must be worked out first. |
 | M8. Public release | Docs, module template, mock devices, build checks and the release pipeline are in place. No release has been made. The signing key does not exist yet; see [releasing](releasing.md). |
@@ -119,22 +120,22 @@ These follow the spec's build order.
 ## What is verified
 
 "Tested" below means automated tests that run on every change, on Windows and
-Linux build machines. It does not mean a person has seen it work on a real
-server.
+Linux build machines. "Real" means it has been seen working on the owner's own
+server, tenant and printer, at least once.
 
 | Part | How it has been checked | What has not |
 |------|-------------------------|--------------|
-| Scan intake, upload, retries, retention | Tests against the mock Microsoft 365, which stores real files and enforces name clashes and upload in pieces | A real OneDrive. A real printer writing over SMB. |
-| Sign-in to Graph with the certificate | The mock checks the signature against the uploaded certificate, as Entra does | A real tenant. |
-| Creating the app registration | Tests against the mock | A real tenant. The permission IDs are Microsoft's published ones but have not been tried. Sign-in by code may be blocked by your Conditional Access. |
-| Admin sign-in and roles | Tests run the real sign-in flow against the mock | A real tenant. |
-| Directory sync, change guard, drift check | Tests against the mocks | A real tenant with real group sizes. |
-| Module system | The sample module is packed, signed, installed, loaded and pushed to the mock printer in tests | Any real printer. |
+| Scan intake, upload, retries, retention | Tested against the mock. **Real:** a scan made at the printer arrived in the right OneDrive. | Large files, long scans, failures and re-runs on the real server. Retention over days. |
+| Sign-in to Graph with the certificate | Tested against the mock. **Real:** works on a real tenant. | — |
+| Creating the app registration | Tested against the mock. **Real:** setup connected a real tenant and the permissions were approved. | Which route was used (code or by hand) was not recorded. Running setup a second time. |
+| Admin sign-in and roles | Tested against the mock, running the real sign-in flow. | Not confirmed on the real tenant yet: finishing setup by signing in, and the Helpdesk role. |
+| Directory sync, change guard, drift check | Tested against the mocks. **Real:** a sync read a real group and created people; a member with a locked OneDrive is skipped. | The change guard, joiners and leavers, and the drift check on the real tenant. |
+| Module system | The sample module is packed, signed, installed, loaded and pushed to the mock printer in tests. **Real:** the Kyocera module was installed from a file as a custom module and pushed to a real printer. | An official, signed module installed from GitHub. |
 | Admin screen | A browser test walks through setup, a printer, a sync, a scan, a failure, the change guard and the Helpdesk role | Nobody has used it by hand. |
 | Installer | On every change a Windows Server build machine installs it silently and runs 56 checks: the service and its account, HTTPS, the setup gate, folder rights, both certificates, the printer account and its sign-in denials, the share, the firewall rule, Installed apps, a custom module loading, a repair that keeps the certificate and password, and a clean uninstall | The wizard screens: nobody has looked at them or clicked through them. Modify and Update through the screens. Moving folders. A real server with real policies. |
 | The share's rights | On the same build machine the test connects to the share as the printer account: writing a scan works; listing, reading back and deleting are refused; the service then picks the file up | A real printer. Many printers probe a folder before writing, and may need more than create and write. |
 | Alert emails | Tests check what is sent and to whom | Delivery through a real mailbox. |
-| Vendor modules | Not built | Everything. |
+| Vendor modules | **Kyocera ECOSYS M8124cidn: real.** A push put people on the printer and a scan from the panel reached OneDrive. | Other Kyocera models. Canon is not built. Brother is dropped. |
 
 The checklist for a real server is [server-test.md](server-test.md).
 
