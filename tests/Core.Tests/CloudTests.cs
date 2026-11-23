@@ -81,6 +81,25 @@ public class CloudTests
     }
 
     [Fact]
+    public async Task A_token_issued_just_after_consent_without_its_permissions_is_not_kept()
+    {
+        await using var env = await TestEnvironment.StartAsync();
+        await env.ConnectAsync();
+        env.State.AddGroup("IT Staff");
+
+        // Entra hands out a token that does not have the permissions yet. One refusal must not stick.
+        env.State.TokensWithoutPermissions = 1;
+        Assert.Single(await env.Graph.SearchGroupsAsync("IT"));
+
+        // Several in a row: the first search may fail, but it recovers on its own within seconds, not an hour.
+        env.Get<AppTokenProvider>().Reset();
+        env.State.TokensWithoutPermissions = 2;
+        await Assert.ThrowsAsync<CloudException>(() => env.Graph.SearchGroupsAsync("IT"));
+        env.Get<AppTokenProvider>().Reset();
+        Assert.Single(await env.Graph.SearchGroupsAsync("IT"));
+    }
+
+    [Fact]
     public async Task Group_members_include_nested_groups_across_pages()
     {
         await using var env = await TestEnvironment.StartAsync();

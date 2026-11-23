@@ -110,12 +110,8 @@ public static class ServiceHost
         // A changed tenant or app registration takes effect at the next sign-in, without a restart.
         var settings = app.Services.GetRequiredService<SettingsStore>();
         var cache = app.Services.GetRequiredService<IOptionsMonitorCache<OpenIdConnectOptions>>();
-        var tokens = app.Services.GetRequiredService<AppTokenProvider>();
-        settings.Changed += _ =>
-        {
-            cache.TryRemove(Schemes.Oidc);
-            tokens.Reset();
-        };
+        // The Graph token is kept: it is tied to the tenant and registration, and a new one is fetched when those change.
+        settings.Changed += _ => cache.TryRemove(Schemes.Oidc);
 
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ScanRelay");
         var install = app.Services.GetRequiredService<InstallConfig>();

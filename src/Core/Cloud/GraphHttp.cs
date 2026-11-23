@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace ScanRelay.Core.Cloud;
 
 /// <summary>Sends requests to Microsoft Graph with a token, waits when Graph says to slow down, and turns errors into <see cref="CloudException"/>.</summary>
-public sealed class GraphHttp(HttpClient http, string baseUrl, Func<CancellationToken, Task<string>> token, TimeProvider time)
+public sealed class GraphHttp(HttpClient http, string baseUrl, Func<CancellationToken, Task<string>> token, TimeProvider time, Action? forgetToken = null)
 {
     private const int MaxThrottleRetries = 2;
     private static readonly TimeSpan MaxThrottleWait = TimeSpan.FromSeconds(30);
@@ -75,6 +75,7 @@ public sealed class GraphHttp(HttpClient http, string baseUrl, Func<Cancellation
     /// <summary>Sends a request built fresh for each attempt. Throws <see cref="CloudException"/> unless Graph answers with success.</summary>
     public async Task<HttpResponseMessage> SendAsync(Func<HttpRequestMessage> build, bool authenticated, CancellationToken ct)
     {
+        var retriedWithFreshToken = false;
         for (var attempt = 0; ; attempt++)
         {
             using var request = build();
@@ -105,6 +106,17 @@ public sealed class GraphHttp(HttpClient http, string baseUrl, Func<Cancellation
                 var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(2 * (attempt + 1));
                 response.Dispose();
                 await Task.Delay(wait < MaxThrottleWait ? wait : MaxThrottleWait, time, ct);
+                continue;
+            }
+
+            // Refused, or the token was not accepted: the token may be stale, for example one issued
+            // moments after consent, before Entra had caught up. Ask for a fresh one, once.
+            if (status is 401 or 403 && authenticated && forgetToken is not null && !retriedWithFreshToken)
+            {
+                retriedWithFreshToken = true;
+                response.Dispose();
+                forgetToken();
+                await Task.Delay(TimeSpan.FromSeconds(1), time, ct);
                 continue;
             }
 

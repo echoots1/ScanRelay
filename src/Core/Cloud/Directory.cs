@@ -41,7 +41,7 @@ public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenP
     public int ChunkSize { get; init; } = 320 * 1024 * 32;
 
     private const string UserFields = "id,displayName,userPrincipalName,accountEnabled,userType";
-    private readonly GraphHttp _graph = new(http, install.Cloud.Graph, tokens.GetTokenAsync, time);
+    private readonly GraphHttp _graph = new(http, install.Cloud.Graph, tokens.GetTokenAsync, time, tokens.Reset);
 
     public async Task<string> GetOrganizationNameAsync(CancellationToken ct = default)
     {

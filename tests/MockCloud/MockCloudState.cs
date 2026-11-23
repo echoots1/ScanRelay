@@ -66,6 +66,9 @@ public sealed class MockCloudState
     /// <summary>The files attached to the latest release.</summary>
     public ConcurrentDictionary<string, byte[]> ReleaseAssets { get; } = new();
 
+    /// <summary>The next N tokens for the service carry no permissions, as Entra's can for a few minutes after consent.</summary>
+    public int TokensWithoutPermissions;
+
     /// <summary>The person the next device code or browser sign-in signs in as.</summary>
     public Guid? SignInAs { get; set; }
 

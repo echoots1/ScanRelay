@@ -239,7 +239,9 @@ public sealed partial class MockCloudServer : IAsyncDisposable
         if (grant == "client_credentials")
         {
             var roles = new JsonArray();
-            if (app.ConsentGranted && app.HasServicePrincipal)
+            var stale = Interlocked.Decrement(ref State.TokensWithoutPermissions) >= 0;
+            Interlocked.Exchange(ref State.TokensWithoutPermissions, Math.Max(0, State.TokensWithoutPermissions));
+            if (app.ConsentGranted && app.HasServicePrincipal && !stale)
             {
                 foreach (var name in RoleNames(app)) roles.Add(name);
             }

@@ -93,7 +93,10 @@ public sealed class AppTokenProvider(
             var (token, expiresIn) = await RequestAsync(s.TenantId, s.ClientId, ct);
             _token = token;
             _tokenFor = key;
-            _expires = time.GetUtcNow().AddSeconds(Math.Max(60, expiresIn - 300));
+            // Just after consent, Entra can still hand out a token without the new permissions.
+            // Such a token is used once and not kept, so the next call asks again.
+            var complete = AppRegistration.ApplicationPermissionNames.All(ReadRoles(token).Contains);
+            _expires = complete ? time.GetUtcNow().AddSeconds(Math.Max(60, expiresIn - 300)) : time.GetUtcNow().AddSeconds(15);
             return token;
         }
         finally
@@ -106,10 +109,18 @@ public sealed class AppTokenProvider(
     public void Reset() => _token = null;
 
     /// <summary>The application permissions the current token carries.</summary>
-    public async Task<IReadOnlyList<string>> GetGrantedRolesAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<string>> GetGrantedRolesAsync(CancellationToken ct = default) => ReadRoles(await GetTokenAsync(ct));
+
+    private static List<string> ReadRoles(string token)
     {
-        var payload = Jwt.ReadPayload(await GetTokenAsync(ct));
-        return payload["roles"] is JsonArray roles ? [.. roles.Select(r => r!.GetValue<string>())] : [];
+        try
+        {
+            return Jwt.ReadPayload(token)["roles"] is JsonArray roles ? [.. roles.Select(r => r!.GetValue<string>())] : [];
+        }
+        catch (Exception e) when (e is CloudException or FormatException or System.Text.Json.JsonException)
+        {
+            return [];
+        }
     }
 
     public string TokenEndpoint(string tenantId) => $"{install.Cloud.Login.TrimEnd('/')}/{tenantId}/oauth2/v2.0/token";
