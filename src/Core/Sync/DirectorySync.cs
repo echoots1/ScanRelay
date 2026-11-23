@@ -247,10 +247,24 @@ public sealed class DirectorySync(
             {
                 if (excluded.Contains(user.Id)) continue;
                 if (!user.Enabled || (user.IsGuest && !s.IncludeGuests)) continue;
-                if (!known.Contains(user.Id) && !await HasOneDriveAsync(user.Id, ct))
+                if (!known.Contains(user.Id))
                 {
-                    skipped.Add($"{user.DisplayName} (no OneDrive)");
-                    continue;
+                    // One person's OneDrive being missing, locked or otherwise unusable must not stop the sync for everyone else.
+                    string? reason = null;
+                    try
+                    {
+                        if (!await HasOneDriveAsync(user.Id, ct)) reason = "no OneDrive";
+                    }
+                    catch (CloudException e) when (!e.IsTransient)
+                    {
+                        reason = e.Status == 423 ? "their OneDrive is locked or blocked" : "their OneDrive could not be opened: " + e.Message;
+                    }
+
+                    if (reason is not null)
+                    {
+                        skipped.Add($"{user.DisplayName} ({reason})");
+                        continue;
+                    }
                 }
 
                 eligible[user.Id] = user;

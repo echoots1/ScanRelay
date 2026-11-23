@@ -171,6 +171,23 @@ public sealed class SyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task One_person_with_a_locked_onedrive_is_skipped_and_everyone_else_is_synced()
+    {
+        await AddPrinterAsync();
+        var locked = _env.State.AddUser("Lee Locked");
+        locked.DriveLocked = true;
+        _staff.Members.Add(locked.Id);
+
+        var run = await RunAsync();
+
+        Assert.Equal(RunStatus.Succeeded, run.Status);
+        Assert.Equal(4, run.PeopleAdded);
+        Assert.Equal(4, _mock.Managed.Count);
+        Assert.False(FolderExists(locked));
+        Assert.Equal(["Lee Locked (their OneDrive is locked or blocked)"], DirectorySync.ReadDetail(run.Detail).Changes!.Skipped);
+    }
+
+    [Fact]
     public async Task A_printer_can_have_its_own_smaller_group()
     {
         await using var small = await MockPrinter.StartAsync();

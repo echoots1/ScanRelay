@@ -457,6 +457,7 @@ public sealed partial class MockCloudServer : IAsyncDisposable
             {
                 if (Need("Files.ReadWrite.All") is { } denied) return denied;
                 if (!user.HasDrive) return GraphError(404, "ResourceNotFound", "User's mysite not found.");
+                if (user.DriveLocked) return GraphError(423, "notAllowed", "Access to this site has been blocked. Please contact the administrator to resolve this problem.");
                 if (tail == "drive") return Results.Json(new { id = user.DriveId });
                 if (tail == "drive/root") return Results.Json(ItemJson(State.Root(user.DriveId)));
                 if (tail == "drive/special/documents") return Results.Json(ItemJson(State.Documents(user.DriveId)));
