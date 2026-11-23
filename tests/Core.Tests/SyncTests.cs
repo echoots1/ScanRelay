@@ -229,6 +229,40 @@ public sealed class SyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Giving_a_printer_its_own_group_leaves_the_default_group_off_it_and_taking_it_away_brings_them_back()
+    {
+        var printer = await AddPrinterAsync();
+        await RunAsync();
+        Assert.Equal(4, _mock.Managed.Count);
+        var frontDesk = _env.State.AddGroup("Front Desk", _people[0]);
+        var manual = _env.State.AddUser("Manual Everywhere");
+        await using (var db = await DbAsync())
+        {
+            db.People.Add(new Person { Id = manual.Id, DisplayName = manual.DisplayName, UserPrincipalName = manual.Upn, Source = PersonSource.Manual, RemovedUtc = DateTime.UtcNow });
+            await db.Printers.Where(p => p.Id == printer.Id).ExecuteUpdateAsync(u => u.SetProperty(p => p.SyncGroupId, frontDesk.Id));
+            await db.SaveChangesAsync();
+        }
+
+        var run = await RunAsync();
+
+        // Only its own group, plus anyone added by hand to every printer. The default group's other members are gone from it.
+        Assert.Equal(["Ann Example", "Manual Everywhere"], _mock.Managed.Select(e => e.Name).Order());
+        Assert.Equal(3, Assert.Single(run.Pushes).Removed);
+
+        // They are still people who can scan elsewhere: their folders stay, and nobody was removed from the list.
+        Assert.Equal(0, run.PeopleRemoved);
+        Assert.All(_people, p => Assert.True(FolderExists(p)));
+
+        await using (var db = await DbAsync())
+        {
+            await db.Printers.Where(p => p.Id == printer.Id).ExecuteUpdateAsync(u => u.SetProperty(p => p.SyncGroupId, (Guid?)null));
+        }
+
+        await RunAsync();
+        Assert.Equal(5, _mock.Managed.Count);
+    }
+
+    [Fact]
     public async Task Manual_people_and_exclusions_are_kept_through_every_sync()
     {
         await using var second = await MockPrinter.StartAsync();

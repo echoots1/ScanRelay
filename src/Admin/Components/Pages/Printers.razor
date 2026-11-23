@@ -38,7 +38,7 @@
                                 @if (module is null) { <div><Badge Text="Not installed" Kind="bad" /></div> }
                                 else if (!module.Usable) { <div><Badge Text="Paused" Kind="warn" /></div> }
                             </td>
-                            <td>@p.Entries entries<div class="muted small">@(p.Printer.SyncGroupId is null ? "Default group" : "Own group")</div></td>
+                            <td>@p.Entries entries<div class="muted small">@(p.Printer.SyncGroupId is null ? "Default sync group" : $"Own group: {p.Printer.SyncGroupName ?? "chosen"}")</div></td>
                             <td>@Fmt.Ago(p.Printer.LastReachableUtc, NowUtc)</td>
                             <td class="actions">
                                 <button class="small" disabled="@Busy" @onclick="() => TestAsync(p.Printer)">Test connection</button>
@@ -158,7 +158,7 @@
         <div class="field"><label for="p-pass">Password</label><input id="p-pass" type="password" @bind="_form.AdminPassword" autocomplete="new-password" placeholder="@(_form.HasPassword ? "Stored. Leave empty to keep it." : "")" />
             <div class="hint">Stored encrypted on the server and never shown again.</div></div>
         <GroupPicker Label="This printer's own group (optional)" AllowNone="true" GroupId="_form.GroupId" GroupName="@_form.GroupName"
-                     Hint="Leave empty to use the default sync group. A smaller group is for machines with a low entry limit."
+                     Hint="Leave empty and this printer lists everyone in the default sync group. Choose a group and it lists that group's members instead: the default group is left out for this printer. People added by hand to every printer are still included. Takes effect at the next sync."
                      Changed="g => { _form.GroupId = g?.Id; _form.GroupName = g?.DisplayName; }" />
         <div class="toolbar">
             <button class="primary" disabled="@Busy" @onclick="SaveAsync">Save</button>
@@ -233,7 +233,7 @@
         {
             Id = p.Id, Name = p.Name, Address = p.Address, Model = p.Model ?? "", ModuleId = p.ModuleId,
             AdminUser = p.AdminUser ?? "", HasPassword = p.AdminPasswordProtected is not null, GroupId = p.SyncGroupId,
-            GroupName = p.SyncGroupId is null ? null : "Chosen group",
+            GroupName = p.SyncGroupId is null ? null : p.SyncGroupName ?? "Chosen group",
         };
         if (Modules.Find(p.ModuleId)?.Data is { } data) _form.Options = PrinterService.EffectiveOptions(p, data);
     }
@@ -267,11 +267,13 @@
             printer.Model = f.Model.Trim();
             printer.ModuleId = f.ModuleId;
             printer.SyncGroupId = f.GroupId;
+            printer.SyncGroupName = f.GroupId is null ? null : f.GroupName;
             printer.AdminUser = string.IsNullOrWhiteSpace(f.AdminUser) ? null : f.AdminUser.Trim();
             printer.OptionsJson = System.Text.Json.JsonSerializer.Serialize(overrides);
             if (f.AdminPassword.Length > 0) printer.AdminPasswordProtected = Protector.ProtectBytes(f.AdminPassword);
             await db.SaveChangesAsync();
-            await Audit.WriteAsync(Actor, f.Id == 0 ? "Printer added" : "Printer changed", printer.Name, $"{printer.Address}, module {printer.ModuleId}");
+            await Audit.WriteAsync(Actor, f.Id == 0 ? "Printer added" : "Printer changed", printer.Name,
+                $"{printer.Address}, module {printer.ModuleId}, {(printer.SyncGroupId is null ? "default sync group" : "own group " + printer.SyncGroupName)}");
             _form = null;
             _adding = false;
             return null;

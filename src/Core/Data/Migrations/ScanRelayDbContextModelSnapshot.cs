@@ -200,6 +200,9 @@ namespace ScanRelay.Core.Data.Migrations
                     b.Property<Guid?>("SyncGroupId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SyncGroupName")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")

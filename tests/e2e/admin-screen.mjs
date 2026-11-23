@@ -117,6 +117,25 @@ assert.equal((await state()).printerOther.length, 3, 'entries the service does n
 await shot(page, 'runs-after-sync');
 log('preview changed nothing; sync put 7 people on the printer and left its other entries alone');
 
+// ---- a printer with its own group ----------------------------------------------
+await page.getByRole('link', { name: 'Printers' }).click();
+await page.locator('tr', { hasText: 'Front office printer' }).getByRole('button', { name: 'Edit' }).click();
+await pickGroup(page, "This printer's own group (optional)", 'Front', 'Front Office');
+await page.getByRole('button', { name: 'Save' }).click();
+await page.getByText('Own group: Front Office').waitFor();
+await page.getByRole('link', { name: 'Runs' }).click();
+await page.getByRole('button', { name: 'Sync now' }).click();
+await eventually(async () => (await state()).printerEntries.join() === 'Ann Example,Bob Example', 'only the printer\'s own group on it');
+await page.getByRole('link', { name: 'Printers' }).click();
+await page.locator('tr', { hasText: 'Front office printer' }).getByRole('button', { name: 'Edit' }).click();
+await page.locator('.field', { has: page.getByText("This printer's own group (optional)", { exact: true }) }).getByRole('button', { name: 'Remove' }).click();
+await page.getByRole('button', { name: 'Save' }).click();
+await page.getByText('Default sync group').waitFor();
+await page.getByRole('link', { name: 'Runs' }).click();
+await page.getByRole('button', { name: 'Sync now' }).click();
+await eventually(async () => (await state()).printerEntries.length === 7, 'the default group back on the printer');
+log('a printer given its own group lists only that group, and goes back to the default group when it is removed');
+
 // ---- a scan ------------------------------------------------------------------
 await post('/scan/Ann%20Example');
 await page.getByRole('link', { name: 'Jobs' }).click();

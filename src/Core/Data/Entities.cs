@@ -65,6 +65,9 @@ public class Printer
     /// <summary>This printer's own smaller group, if it has one. Null means the default sync group.</summary>
     public Guid? SyncGroupId { get; set; }
 
+    /// <summary>That group's name, as it was when chosen. For showing only.</summary>
+    public string? SyncGroupName { get; set; }
+
     /// <summary>Per-printer values that override the module data, as JSON.</summary>
     public string OptionsJson { get; set; } = "{}";
 
