@@ -39,10 +39,19 @@ jobs:
         env:
           MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
         run: |
-          if (-not $env:MODULE_SIGNING_KEY) { throw "The MODULE_SIGNING_KEY secret is not set. See docs/releasing.md." }
-          if (-not (Test-Path catalog/signing-key.pub.pem)) { throw "catalog/signing-key.pub.pem is not in the repo. See docs/releasing.md." }
-          dotnet run --project tools/ModuleTool --configuration Release -- key-matches catalog/signing-key.pub.pem
-          if ($LASTEXITCODE -ne 0) { throw "The signing key does not match the public key the app is built to trust." }
+          $hasSecret = [bool]$env:MODULE_SIGNING_KEY
+          $hasPublic = Test-Path catalog/signing-key.pub.pem
+          if ($hasSecret -and $hasPublic) {
+            dotnet run --project tools/ModuleTool --configuration Release -- key-matches catalog/signing-key.pub.pem
+            if ($LASTEXITCODE -ne 0) { throw "The signing key does not match the public key the app is built to trust." }
+            "SIGNED=true" >> $env:GITHUB_ENV
+          }
+          else {
+            # Without both halves of the key, modules cannot be official. The release still goes out,
+            # says so plainly, and its modules install as custom, from a file.
+            Write-Host "::warning::Modules in this release are NOT signed: secret present = $hasSecret, public key in repo = $hasPublic. See docs/releasing.md."
+            "SIGNED=false" >> $env:GITHUB_ENV
+          }
 
       - name: Build and test
         run: |
@@ -67,19 +76,22 @@ jobs:
           MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
         run: |
           $tool = "tools/ModuleTool"
-          Get-ChildItem modules -Recurse -Filter *.csproj | ForEach-Object {
+          # The sample module drives a mock printer and is not shipped.
+          Get-ChildItem modules -Recurse -Filter *.csproj | Where-Object { $_.FullName -notmatch 'scanrelay[\\/]sample' } | ForEach-Object {
             $out = "artifacts/modules/$($_.BaseName)"
             dotnet publish $_.FullName --configuration Release --output $out
             if ($LASTEXITCODE -ne 0) { throw "Publishing $($_.Name) failed." }
             dotnet run --project $tool --configuration Release --no-build -- pack $out release
             if ($LASTEXITCODE -ne 0) { throw "Packing $($_.Name) failed." }
           }
-          Get-ChildItem release -Filter *.srmod | ForEach-Object {
-            dotnet run --project $tool --configuration Release --no-build -- sign $_.FullName
-            if ($LASTEXITCODE -ne 0) { throw "Signing $($_.Name) failed." }
+          if ($env:SIGNED -eq "true") {
+            Get-ChildItem release -Filter *.srmod | ForEach-Object {
+              dotnet run --project $tool --configuration Release --no-build -- sign $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Signing $($_.Name) failed." }
+            }
+            dotnet run --project $tool --configuration Release --no-build -- index release
+            if ($LASTEXITCODE -ne 0) { throw "Writing the module index failed." }
           }
-          dotnet run --project $tool --configuration Release --no-build -- index release
-          if ($LASTEXITCODE -ne 0) { throw "Writing the module index failed." }
 
       - name: Write checksums
         shell: pwsh
@@ -95,4 +107,9 @@ jobs:
         run: |
           $notes = "docs/releases/$env:VERSION.md"
           if (-not (Test-Path $notes)) { throw "Write the release notes and update steps in $notes first. See docs/releasing.md." }
-          gh release create "${{ github.ref_name }}" (Get-ChildItem release -File).FullName --draft --title "$env:VERSION" --notes-file $notes
+          Copy-Item $notes release-notes.md
+          if ($env:SIGNED -ne "true") {
+            Add-Content release-notes.md "`n## Modules in this release are not signed`n`nThe project's signing key was not in place when this release was built. The installer therefore lists no modules from GitHub. Download the module file (.srmod) from this release and add it in the installer's Modules step as a custom module from a file."
+          }
+          gh release create "${{ github.ref_name }}" (Get-ChildItem release -File).FullName --draft --title "$env:VERSION" --notes-file release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw "Creating the release failed." }
