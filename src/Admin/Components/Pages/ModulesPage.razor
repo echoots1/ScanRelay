@@ -85,7 +85,7 @@ else
         }
         catch (ModuleException e)
         {
-            _catalogProblem = "The module list on GitHub could not be read. " + e.Message;
+            _catalogProblem = e.Message == ModuleCatalog.NoListMessage ? e.Message : "The module list on GitHub could not be read. " + e.Message;
         }
     }
 }

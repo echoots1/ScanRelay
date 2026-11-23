@@ -84,6 +84,11 @@ public sealed class UpdateChecker(
                 .Where(x => x.Latest is not null && System.Version.Parse(x.Latest.Version) > System.Version.Parse(x.Installed.Installed.Version))
                 .Select(x => new ModuleUpdate(x.Installed.Id, x.Installed.Installed.Version, x.Latest!.Version))];
         }
+        catch (ModuleException e) when (e.Message == ModuleCatalog.NoListMessage)
+        {
+            // A release without signed modules has no list. Nothing is wrong and there is nothing to report.
+            moduleUpdates = [];
+        }
         catch (ModuleException e)
         {
             problem ??= "Could not check GitHub for module updates: " + e.Message;

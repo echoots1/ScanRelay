@@ -38,6 +38,10 @@ public sealed record CatalogIndex(
 public sealed class ModuleCatalog(HttpClient http, InstallConfig install, TrustedKeys keys)
 {
     public const string IndexName = "modules-index.json";
+
+    /// <summary>What is said when the latest release carries no module list. That is normal for a release whose modules are not signed.</summary>
+    public const string NoListMessage =
+        "The latest release has no signed module list, so there are no modules to offer from GitHub. Modules for it are added from a file, in the installer's Modules step.";
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     /// <summary>Builds the index for a folder of packages. Run by the release pipeline.</summary>
@@ -106,6 +110,11 @@ public sealed class ModuleCatalog(HttpClient http, InstallConfig install, Truste
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.UserAgent.ParseAdd("ScanRelay");
             using var response = await http.SendAsync(request, ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound && asset.StartsWith(IndexName, StringComparison.Ordinal))
+            {
+                throw new ModuleException(NoListMessage);
+            }
+
             if (!response.IsSuccessStatusCode) throw new ModuleException($"GitHub answered {(int)response.StatusCode} for {asset}.");
             return await response.Content.ReadAsByteArrayAsync(ct);
         }

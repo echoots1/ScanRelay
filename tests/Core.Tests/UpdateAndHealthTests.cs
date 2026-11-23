@@ -137,6 +137,22 @@ public sealed class UpdateAndHealthTests : IDisposable
     }
 
     [Fact]
+    public async Task A_release_without_a_module_list_is_not_reported_as_a_problem()
+    {
+        _sample.InstallOfficial();
+        await using var env = await StartAsync();
+        env.State.Release = ("v9.1.0", "9.1.0", "Notes.");
+
+        var status = await env.Get<UpdateChecker>().CheckAsync();
+
+        Assert.Equal("9.1.0", status.App!.Version);
+        Assert.Null(status.Problem);
+        Assert.Empty(status.Modules);
+        var error = await Assert.ThrowsAsync<ModuleException>(() => env.Get<ModuleCatalog>().FetchAsync());
+        Assert.Contains("added from a file", error.Message);
+    }
+
+    [Fact]
     public async Task A_module_list_that_is_not_signed_by_the_project_is_ignored()
     {
         _sample.InstallOfficial();
