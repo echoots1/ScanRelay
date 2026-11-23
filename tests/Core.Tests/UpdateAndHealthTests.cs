@@ -63,7 +63,7 @@ public sealed class UpdateAndHealthTests : IDisposable
         Assert.False(status.App.Security);
         var mail = Assert.Single(env.State.Outbox);
         Assert.Equal("ScanRelay: version 9.1.0 is available", mail.Subject);
-        Assert.Contains("Installed version: 0.1.0", mail.Body);
+        Assert.Contains($"Installed version: {ModuleHost.AppVersion}", mail.Body);
         Assert.Contains("Fixes upload of large files.", mail.Body);
         Assert.Contains("releases/tag/v9.1.0", mail.Body);
 
@@ -98,7 +98,7 @@ public sealed class UpdateAndHealthTests : IDisposable
         PublishCatalog(env);
         Assert.Null((await env.Get<UpdateChecker>().CheckAsync()).App);
 
-        env.State.Release = ("v0.1.0", "0.1.0", "");
+        env.State.Release = ($"v{ModuleHost.AppVersion}", ModuleHost.AppVersion.ToString(), "");
         var status = await env.Get<UpdateChecker>().CheckAsync();
 
         Assert.Null(status.App);

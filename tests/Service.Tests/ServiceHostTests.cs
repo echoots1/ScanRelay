@@ -105,7 +105,7 @@ public sealed class ServiceHostTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("ok", body.RootElement.GetProperty("status").GetString());
-        Assert.Equal("0.1.0", body.RootElement.GetProperty("version").GetString());
+        Assert.Equal(Core.Modules.ModuleHost.AppVersion.ToString(3), body.RootElement.GetProperty("version").GetString());
         Assert.True(Directory.Exists(Path.Combine(_dataFolder, "Inbox")));
         Assert.True(File.Exists(Path.Combine(_dataFolder, "scanrelay.db")));
     }
