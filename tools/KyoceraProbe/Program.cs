@@ -9,7 +9,9 @@ public static class ProbeProgram
             Console.WriteLine("""
                 Looks at a Kyocera printer's address book service and saves a report. It only reads.
 
-                  kyocera-probe <printer address> [--netviewer "<KYOCERA Net Viewer install folder>"]
+                  kyocera-probe <printer address> [--netviewer "<KYOCERA Net Viewer install folder>"] [--brief]
+
+                --brief leaves the address book itself out of the report.
 
                 Before you run it, add one test entry to the printer's address book whose name starts
                 with "ScanRelay" (a made-up folder and a throwaway password). The report keeps that entry
@@ -26,11 +28,9 @@ public static class ProbeProgram
         const string file = "kyocera-probe-report.txt";
         await using (var report = new StreamWriter(file))
         {
-            await new Probe(http, report).RunAsync(args[0], netViewer);
+            await new Probe(http, report).RunAsync(args[0], netViewer, args.Contains("--brief"));
         }
 
-        Console.WriteLine(await File.ReadAllTextAsync(file));
-        Console.WriteLine();
         Console.WriteLine($"Saved as {Path.GetFullPath(file)}. Read it over before you share it.");
         return 0;
     }

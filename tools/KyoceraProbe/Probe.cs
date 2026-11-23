@@ -17,7 +17,7 @@ public sealed partial class Probe(HttpClient http, TextWriter report)
     /// <summary>Entries whose name starts with this are test entries, and are kept readable in the report.</summary>
     public const string TestPrefix = "ScanRelay";
 
-    public async Task RunAsync(string address, string? netViewerFolder, CancellationToken ct = default)
+    public async Task RunAsync(string address, string? netViewerFolder, bool brief = false, CancellationToken ct = default)
     {
         report.WriteLine("Kyocera address book probe");
         report.WriteLine($"Run at {DateTime.UtcNow:u}. Read-only: nothing on the printer was changed.");
@@ -60,9 +60,32 @@ public sealed partial class Probe(HttpClient http, TextWriter report)
                 });
             }
 
-            foreach (var soap in new[] { "1.2", "1.1" })
+            if (!brief)
             {
-                await TryAsync($"Read the address book, SOAP {soap}, with no sign-in", () => ReadAsync(url, soap, ct));
+                foreach (var soap in new[] { "1.2", "1.1" })
+                {
+                    await TryAsync($"Read the address book, SOAP {soap}, with no sign-in", () => ReadAsync(url, soap, ct));
+                }
+            }
+
+            // More questions that only read: what the service supports, how many entries, which model and firmware, and whether sign-in is on.
+            var root = $"{scheme}://{address}:{port}/ws/km-wsdl";
+            foreach (var (service, operation, inner) in new[]
+            {
+                ("setting/address_book", "get_service_information", ""),
+                ("setting/address_book", "get_personal_address_count", ""),
+                ("setting/address_book", "get_one_touch_key_count", ""),
+                ("information/device_information", "get_device_identification_information", ""),
+                ("security/authentication_authorization", "get_authentication_status", ""),
+                ("security/authentication_authorization", "get_service_information", ""),
+            })
+            {
+                await TryAsync($"{service}: {operation}", async () =>
+                {
+                    var answer = await PostAsync($"{root}/{service}", "1.2", operation, inner, ct, "http://www.kyoceramita.com/ws/km-wsdl/" + service);
+                    report.WriteLine($"  HTTP {answer.Status}");
+                    report.WriteLine(Indent(BodyOnly(Redact(answer.Body))));
+                });
             }
         }
 
@@ -71,6 +94,9 @@ public sealed partial class Probe(HttpClient http, TextWriter report)
             report.WriteLine();
             report.WriteLine($"=== Names inside KYOCERA Net Viewer ({netViewerFolder}) ===");
             ScanFolder(netViewerFolder);
+            report.WriteLine();
+            report.WriteLine("=== The shape of the address book messages, read from Net Viewer's files ===");
+            ContractReader.Write(netViewerFolder, report);
         }
     }
 
@@ -102,15 +128,16 @@ public sealed partial class Probe(HttpClient http, TextWriter report)
         }
     }
 
-    private async Task<(int Status, string Body)> PostAsync(string url, string soap, string operation, string inner, CancellationToken ct)
+    private async Task<(int Status, string Body)> PostAsync(string url, string soap, string operation, string inner, CancellationToken ct, string? serviceNamespace = null)
     {
-        var action = $"{Namespace}/{operation}";
+        var ns = serviceNamespace ?? Namespace;
+        var action = $"{ns}/{operation}";
         var (envelope, contentType, header) = soap == "1.2"
             ? ("http://www.w3.org/2003/05/soap-envelope", "application/soap+xml",
                 $"<wsa:Action s:mustUnderstand=\"true\">{action}</wsa:Action>")
             : ("http://schemas.xmlsoap.org/soap/envelope/", "text/xml",
                 $"<wsa:MessageID>urn:uuid:{Guid.NewGuid()}</wsa:MessageID><wsa:To>{url}</wsa:To><wsa:Action>{action}</wsa:Action>");
-        var body = $"<?xml version=\"1.0\" encoding=\"utf-8\"?><s:Envelope xmlns:s=\"{envelope}\" xmlns:wsa=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:k=\"{Namespace}\">"
+        var body = $"<?xml version=\"1.0\" encoding=\"utf-8\"?><s:Envelope xmlns:s=\"{envelope}\" xmlns:wsa=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:k=\"{ns}\">"
             + $"<s:Header>{header}</s:Header><s:Body><k:{operation}Request>{inner}</k:{operation}Request></s:Body></s:Envelope>";
         using var content = new StringContent(body, Encoding.UTF8);
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType) { CharSet = "utf-8" };
@@ -208,6 +235,10 @@ public sealed partial class Probe(HttpClient http, TextWriter report)
 
     private static string? Tag(string xml, string name) =>
         Regex.Match(xml, $@"<(?:\w+:)?{name}>\s*([^<]*?)\s*</(?:\w+:)?{name}>") is { Success: true } m ? m.Groups[1].Value : null;
+
+    /// <summary>Leaves out the long list of namespaces every answer starts with.</summary>
+    private static string BodyOnly(string xml) =>
+        Regex.Match(xml, @"<(?:[\w-]+:)?Body[^>]*>(.*)</(?:[\w-]+:)?Body>", RegexOptions.Singleline) is { Success: true } m ? m.Groups[1].Value.Trim() : xml;
 
     private static string Indent(string text) => "    " + (text.Length > 60000 ? text[..60000] + "… (cut)" : text).Replace("><", ">\n    <");
 

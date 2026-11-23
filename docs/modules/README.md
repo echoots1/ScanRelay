@@ -45,19 +45,27 @@ not document it.
   `create_personal_address_enumeration` then `get_personal_address_list`, are
   shown in public write-ups. Each entry comes back with its name, its SMB
   server, path, port, sign-in name and password.
-- **Writing is not known.** Nothing public shows how an entry is added,
-  changed or removed through this service. The names have to come from the
-  printer's own service description or from Net Viewer.
+- **Writing: the operation names are now known, their message shapes are not
+  yet.** The first probe of the M8124cidn found, in Net Viewer's files,
+  `add_personal_address`, `update_personal_address`, `delete_personal_address`
+  and `search_personal_address_by_id`, the same four for one-touch keys, and
+  `login_system` and `logout_system` for signing in. The probe now also reads
+  what fields each message has.
+- **What an entry looks like, from the real printer.** One contact holds a
+  name, an id, and email, FTP, SMB, i-fax and fax details together. The SMB
+  part is a server name with no backslashes, a path, port 445, a sign-in name
+  and a password. The M8124cidn had contacts with ids 1 to 21.
 - **A file route exists.** Net Viewer can import an address book file. One
   public tool writes that file (root element `DeviceAddressBook_v5_2`), but the
   password in it must be in Net Viewer's own encoded form, which is not
   documented either.
-- **A security point that affects you now.** On firmware without the fix for
-  CVE-2022-1026, this service answers a read with no sign-in, and the answer
-  includes every password stored in the address book. The usual advice for
-  unpatched printers is to turn the service off, which is the same service a
-  module would use. So the firmware version decides whether this method is
-  acceptable at all.
+- **The M8124cidn answered with no sign-in.** On both ports, the probe read
+  the whole address book, stored passwords included, without signing in. That
+  is CVE-2022-1026, or sign-in for this service is simply not switched on.
+  Either way anyone on that network can do the same, and the same service can
+  also restart the printer or reset it to factory defaults. Fix this before
+  anything else: update the firmware, and turn on sign-in for the service. The
+  module must then sign in, which is the right design anyway.
 
 `tools/KyoceraProbe` checks all of this against a real printer. It only reads,
 and it removes names, addresses, paths, sign-in names and passwords from its
