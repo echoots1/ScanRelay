@@ -6,7 +6,7 @@ added.
 | Module | Covers | State |
 |--------|--------|-------|
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
-| Kyocera | ECOSYS M8124cidn first | **In progress.** The method is being worked out against the real machine. See below. |
+| `kyocera-ecosys` | ECOSYS M8124cidn | **Built, not yet proven on a real printer.** Reads match the real machine. Writes pass against a mock. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
 | Canon | imageCLASS MF642C, MF650C, MF751Cdw II | **Not started.** After Kyocera. |
 
@@ -45,27 +45,34 @@ not document it.
   `create_personal_address_enumeration` then `get_personal_address_list`, are
   shown in public write-ups. Each entry comes back with its name, its SMB
   server, path, port, sign-in name and password.
-- **Writing: the operation names are now known, their message shapes are not
-  yet.** The first probe of the M8124cidn found, in Net Viewer's files,
-  `add_personal_address`, `update_personal_address`, `delete_personal_address`
-  and `search_personal_address_by_id`, the same four for one-touch keys, and
-  `login_system` and `logout_system` for signing in. The probe now also reads
-  what fields each message has.
+- **Writing is built, and not yet tried on a real printer.** The message
+  shapes for `add_personal_address`, `update_personal_address` and
+  `delete_personal_address` were read from Net Viewer's files, and the module
+  uses them. They pass against a mock that answers the way the real printer
+  answered reads. How a real printer treats a write is the next thing to prove.
 - **What an entry looks like, from the real printer.** One contact holds a
-  name, an id, and email, FTP, SMB, i-fax and fax details together. The SMB
+  name, a number, and email, FTP, SMB, i-fax and fax details together. The SMB
   part is a server name with no backslashes, a path, port 445, a sign-in name
-  and a password. The M8124cidn had contacts with ids 1 to 21.
+  and a password.
+- **What the module owns.** Contacts whose folder ends in a person's id and
+  that have no email, fax or FTP destination. Nothing else is changed or
+  removed, whatever its number. New contacts get numbers from a reserved range,
+  100 to 199 by default; the range is a per-printer setting. Whether the
+  printer allows numbers that high is not known yet.
+- **Sign-in.** The M8124cidn tested had sign-in for the service switched off
+  (firmware 2P4_S000.002.204). The module cannot sign in yet. With sign-in on,
+  it reports that plainly and changes nothing.
+- **One-touch keys** live in a different part of the service and are not
+  managed.
 - **A file route exists.** Net Viewer can import an address book file. One
   public tool writes that file (root element `DeviceAddressBook_v5_2`), but the
   password in it must be in Net Viewer's own encoded form, which is not
   documented either.
-- **The M8124cidn answered with no sign-in.** On both ports, the probe read
-  the whole address book, stored passwords included, without signing in. That
-  is CVE-2022-1026, or sign-in for this service is simply not switched on.
-  Either way anyone on that network can do the same, and the same service can
-  also restart the printer or reset it to factory defaults. Fix this before
-  anything else: update the firmware, and turn on sign-in for the service. The
-  module must then sign in, which is the right design anyway.
+- **The service is open when the printer's sign-in is off.** The M8124cidn
+  tested answered a read of the whole address book, stored passwords
+  included, with no sign-in, because sign-in was switched off. Anyone who can
+  reach ports 9090 and 9091 can do the same. Until the module can sign in,
+  limit those ports on the network to IT's computers and the ScanRelay server.
 
 `tools/KyoceraProbe` checks all of this against a real printer. It only reads,
 and it removes names, addresses, paths, sign-in names and passwords from its
@@ -73,6 +80,14 @@ report:
 
 ```
 dotnet run --project tools/KyoceraProbe -- <printer address> --netviewer "<Net Viewer install folder>"
+```
+
+The first write to a real printer is a separate, deliberate step. It adds one
+test contact, renames it, deletes it, and checks that every other contact is
+exactly as it was. Back up the address book first.
+
+```
+dotnet run --project tools/KyoceraProbe -- <printer address> --write-test --number 150
 ```
 
 ## Why the vendor modules were not built blind

@@ -110,7 +110,7 @@ These follow the spec's build order.
 | M2. Jobs | Built and tested: intake, upload, retries, retention, re-run, alerts, Jobs page, Dashboard. |
 | M3. People and sync | Built and tested: groups, manual people, exclusions, folders, preview, change guard, Runs and People pages. |
 | M4. Module system | Built and tested with the sample module and mock printer: SDK, packaging, signing, catalog, module host, Printers and Modules pages, update check, drift check. |
-| M5. Kyocera module | **In progress.** First model: ECOSYS M8124cidn. Reading the address book is understood; writing is not yet. A read-only probe is built to work the rest out against the real printer. See [modules](modules/README.md). |
+| M5. Kyocera module | **Built, not yet proven on a real printer.** First model: ECOSYS M8124cidn. Reading matches what the real printer returned. Adding, changing and deleting pass against a mock built from that. Next: a one-contact write test on the real printer. See [modules](modules/README.md). |
 | M6. Brother module | **Dropped from the first version.** No Brother that scans is in use. |
 | M7. Canon module | **Not started.** After Kyocera. The models are imageCLASS MF, not the imageRUNNER ADVANCE the spec's method is for, so the method must be worked out first. |
 | M8. Public release | Docs, module template, mock devices, build checks and the release pipeline are in place. No release has been made. The signing key does not exist yet; see [releasing](releasing.md). |

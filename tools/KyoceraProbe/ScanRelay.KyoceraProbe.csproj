@@ -4,4 +4,8 @@
     <AssemblyName>kyocera-probe</AssemblyName>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\kyocera\ecosys\ScanRelay.Modules.KyoceraEcosys.csproj" />
+    <ProjectReference Include="..\..\src\ModuleSdk\ScanRelay.ModuleSdk.csproj" />
+  </ItemGroup>
 </Project>

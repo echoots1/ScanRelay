@@ -52,3 +52,4 @@ package-lock.json
 
 # Probe reports are for sharing by hand, never for the repo
 kyocera-probe-report.txt
+kyocera-write-test-report.txt

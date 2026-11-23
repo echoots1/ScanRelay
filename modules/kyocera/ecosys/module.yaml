@@ -1,0 +1,31 @@
+id: kyocera-ecosys
+version: 0.1.0
+vendor: Kyocera
+family: ECOSYS
+models: [ECOSYS M8124cidn]          # exact model names, added as each is tested
+windows_names: ["Kyocera ECOSYS M8124cidn*", "ECOSYS M8124cidn*"]
+status: official
+sdk_version: 1
+app_versions:
+  min: 0.1.0
+adapter: ScanRelay.Modules.KyoceraEcosys.dll
+unofficial: true
+method: >-
+  Uses the printer's own network service on port 9091, the one KYOCERA Net Viewer uses.
+  Kyocera does not document it. It needs the printer's sign-in for that service to be off,
+  so limit who can reach ports 9090 and 9091 on the network.
+scan:
+  protocols: [smb]
+  smb_versions: ["2.0", "3.0"]      # confirm per model
+  share_rights: [create, write]
+address_book:
+  max_entries: 100
+  managed_range: [100, 199]         # contact numbers this module may use. An assumption until the printer's limit is known.
+  one_touch: false
+prerequisites: []
+tested_firmware: []                 # nothing has been pushed to a real printer yet
+options:
+  port: "9091"
+  secure: "true"                    # false talks plain HTTP, normally on port 9090
+  first_number: "100"
+  last_number: "199"

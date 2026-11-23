@@ -14,6 +14,7 @@
     <ProjectReference Include="..\MockDevices\ScanRelay.MockDevices.csproj" />
     <ProjectReference Include="..\..\tools\ModuleTool\ScanRelay.ModuleTool.csproj" />
     <ProjectReference Include="..\..\tools\KyoceraProbe\ScanRelay.KyoceraProbe.csproj" />
+    <ProjectReference Include="..\..\modules\kyocera\ecosys\ScanRelay.Modules.KyoceraEcosys.csproj" />
     <!-- Built first so the tests can package it, but never loaded directly. -->
     <ProjectReference Include="..\..\modules\scanrelay\sample\ScanRelay.Modules.Sample.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>

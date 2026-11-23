@@ -1,5 +1,9 @@
 <Solution>
   <Folder Name="/modules/" />
+  <Folder Name="/modules/kyocera/" />
+  <Folder Name="/modules/kyocera/ecosys/">
+    <Project Path="modules/kyocera/ecosys/ScanRelay.Modules.KyoceraEcosys.csproj" />
+  </Folder>
   <Folder Name="/modules/scanrelay/" />
   <Folder Name="/modules/scanrelay/sample/">
     <Project Path="modules/scanrelay/sample/ScanRelay.Modules.Sample.csproj" />
