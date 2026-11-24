@@ -158,6 +158,12 @@ Work has started with the MF642C.
   first, so the kept password can still be loaded, and keeps it when the
   entry is no longer on the printer. To change the share password, make the
   `ScanRelay` entry again with the new one and read again.
+- **MF650C series: the pages match, nothing is proven.** Its Login, Export and
+  Import pages have the same addresses, field names, upload script and error
+  codes as the MF642C's. A first sign-in from the probe was refused; why is
+  not known yet (the printer's reason code was not captured). Whether its
+  exported file has the same layout is also not known. It is not listed in
+  the module's models until a read and a load have worked on one.
 - **A load that works ends with the printer saying it is restarting.**
 - **A load that is refused because the printer is busy is asked again** every
   15 seconds for up to 3 minutes, which covers a push straight after a read

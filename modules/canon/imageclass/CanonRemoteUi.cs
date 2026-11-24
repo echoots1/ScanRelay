@@ -81,9 +81,18 @@ public sealed partial class CanonRemoteUi : IDisposable
             [("i0012", "1"), ("i0014", managerId), ("i0016", managerPin)], ct, secret: "i0016");
         if (final.Contains("login.html", StringComparison.OrdinalIgnoreCase) || status >= 400)
         {
-            var reason = final.Contains("err=3", StringComparison.Ordinal)
-                ? "The printer does not allow System Manager sign-in while its System Manager PIN is unset or still the factory value. Set an ID and PIN on the printer first."
-                : "The printer refused the System Manager ID and PIN.";
+            // The printer says why with a code. With no code, it never judged the ID and PIN at all.
+            var reason = Regex.Match(final, @"err=(\d+)") is { Success: true } code
+                ? code.Groups[1].Value switch
+                {
+                    "1" => "The printer refused the System Manager ID and PIN: it says they are incorrect. Check them by signing in to its Remote UI in a browser, in System Manager Mode.",
+                    "2" => "The printer says Remote UI sign-in is not available until a Remote UI Access PIN is set on the device.",
+                    "3" => "The printer does not allow System Manager sign-in while its System Manager PIN is unset or still the factory value. Set an ID and PIN on the printer first.",
+                    var other => $"The printer refused the System Manager ID and PIN, with a reason this module does not know (code {other}).",
+                }
+                : status >= 400
+                    ? $"The printer answered the sign-in with an error ({status})."
+                    : "The printer sent the sign-in back to its sign-in page without saying the ID or PIN was wrong. It may want the other of http and https (the module value \"secure\"), or its Remote UI may differ from the one this module was written for.";
             throw new CanonException(reason);
         }
     }
