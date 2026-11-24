@@ -80,8 +80,8 @@ jobs:
           MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
         run: |
           $tool = "tools/ModuleTool"
-          # The sample module drives a mock printer and is not shipped.
-          Get-ChildItem modules -Recurse -Filter *.csproj | Where-Object { $_.FullName -notmatch 'scanrelay[\\/]sample' } | ForEach-Object {
+          # The sample module drives a mock printer and is not shipped. A module with no module.yaml yet is still being built.
+          Get-ChildItem modules -Recurse -Filter *.csproj | Where-Object { $_.FullName -notmatch 'scanrelay[\\/]sample' -and (Test-Path (Join-Path $_.DirectoryName 'module.yaml')) } | ForEach-Object {
             $out = "artifacts/modules/$($_.BaseName)"
             dotnet publish $_.FullName --configuration Release --output $out
             if ($LASTEXITCODE -ne 0) { throw "Publishing $($_.Name) failed." }

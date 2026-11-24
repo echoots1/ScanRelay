@@ -8,7 +8,7 @@ added.
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
 | `kyocera-ecosys` | ECOSYS M8124cidn | **Working on a real printer.** A sync pushed the list, a scan at the panel reached OneDrive. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
-| Canon | imageCLASS MF642C, MF650C, MF751Cdw II | **Not started.** After Kyocera. |
+| Canon | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Started.** The address book file format is read and written. Loading it onto a printer is being worked out. See below. |
 
 ## The first printers
 
@@ -94,6 +94,28 @@ exactly as it was. Back up the address book first.
 ```
 dotnet run --project tools/KyoceraProbe -- <printer address> --write-test --number 150
 ```
+
+## Canon imageCLASS: what is known
+
+Work has started with the MF642C.
+
+- **The file format is known.** The Remote UI exports the address book as a
+  Canon Address Book file (`.abk`). It is plain text: a few comment lines,
+  then one block per entry, each with a number (`dn`), a name, and either an
+  email address or a shared folder's host, path and user name. Names and
+  folder details are Base64. `modules/canon/imageclass/AbkFile.cs` reads and
+  writes it, and writes back a real export byte for byte.
+- **One entry is one destination.** Unlike Kyocera, an email address and a
+  shared folder are separate entries, so a person who should have both needs
+  two.
+- **The folder password is not exported.** The `pwd` line comes out empty.
+  Whether a file with a password in it is accepted on the way in, and in what
+  form, is not known yet.
+- **Whether loading a file replaces the whole address book** is not known yet.
+  If it does, the module must export first and send back everything it found
+  plus its own entries.
+- **How to load a file without a person clicking** is not known yet. It goes
+  through the Remote UI's sign-in and import page.
 
 ## Why the vendor modules were not built blind
 

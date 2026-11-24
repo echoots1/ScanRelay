@@ -113,7 +113,7 @@ These follow the spec's build order.
 | M4. Module system | Built and tested with the sample module and mock printer: SDK, packaging, signing, catalog, module host, Printers and Modules pages, update check, drift check. |
 | M5. Kyocera module | **Working on a real ECOSYS M8124cidn** (firmware 2P4_S000.002.204): sync, push, scan at the panel, file in OneDrive. Not yet tried: joiners and leavers over time, the drift check, and sign-in to the printer's service. See [modules](modules/README.md). |
 | M6. Brother module | **Dropped from the first version.** No Brother that scans is in use. |
-| M7. Canon module | **Not started.** After Kyocera. The models are imageCLASS MF, not the imageRUNNER ADVANCE the spec's method is for, so the method must be worked out first. |
+| M7. Canon module | **Started**, with the imageCLASS MF642C. The address book file format is read and written from a real export. Loading a file onto the printer is still being worked out. See [modules](modules/README.md). |
 | M8. Public release | Docs, module template, mock devices, build checks and the release pipeline are in place. No release has been made. The signing key does not exist yet; see [releasing](releasing.md). |
 
 <a id="what-is-verified"></a>
