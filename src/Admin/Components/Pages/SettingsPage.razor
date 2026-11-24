@@ -8,6 +8,7 @@
 @inject InstallConfig Install
 @inject AuditLog Audit
 @inject SettingsReview Review
+@inject UpdateChecker Updates
 
 <PageTitle>Settings · ScanRelay</PageTitle>
 <h1>Settings</h1>
@@ -137,7 +138,10 @@
         <label class="check"><input type="checkbox" checked="@_s.UpdateCheck" @onchange="e => _s = _s with { UpdateCheck = (bool)e.Value! }" />
             Check GitHub once a day for new app and module versions</label>
         <div class="hint">The app tells the admins and explains what to do. It never updates itself. Turn this off for a server with no internet access.</div>
-        <div class="toolbar" style="margin-top:12px"><button disabled="@(Busy || string.IsNullOrWhiteSpace(_s.AlertSender))" @onclick="TestEmailAsync">Save and send a test email</button></div>
+        <div class="toolbar" style="margin-top:12px">
+            <button disabled="@(Busy || string.IsNullOrWhiteSpace(_s.AlertSender))" @onclick="TestEmailAsync">Save and send a test email</button>
+            <button disabled="@(Busy || !_s.UpdateCheck)" @onclick="CheckUpdatesAsync">Check for updates now</button>
+        </div>
     </div>
 
     <div class="toolbar">
@@ -262,6 +266,17 @@
         await Cloud.SendMailAsync(s.AlertSender!, to, "ScanRelay: test email", "This is a test email from ScanRelay. Alert emails will look like this and come from this mailbox.");
         await Audit.WriteAsync(Actor, "Test email sent", s.AlertSender);
         Notice = $"Saved. Microsoft 365 accepted a test email from {s.AlertSender} to: {string.Join(", ", to)}. If it does not arrive, check that the sender is a real mailbox and look in junk.";
+        return null;
+    }, null);
+
+    private Task CheckUpdatesAsync() => DoAsync(async () =>
+    {
+        var status = await Updates.CheckAsync();
+        if (status.Problem is not null) return status.Problem;
+        Notice = status.App is { } app
+            ? $"Version {app.Version} is available. The Dashboard has the download."
+            : $"This is the latest version ({ModuleHost.AppVersion}).";
+        if (status.Modules.Count > 0) Notice += $" {status.Modules.Count} module update(s) are available.";
         return null;
     }, null);
 

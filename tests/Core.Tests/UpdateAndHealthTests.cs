@@ -80,6 +80,25 @@ public sealed class UpdateAndHealthTests : IDisposable
     }
 
     [Fact]
+    public async Task A_release_with_an_installer_attached_offers_it_for_download()
+    {
+        await using var env = await StartAsync();
+        PublishCatalog(env);
+        env.State.ReleaseAssets["SHA256SUMS.txt"] = [1];
+        env.State.Release = ("v9.1.0", "9.1.0", "Notes.");
+
+        Assert.Null((await env.Get<UpdateChecker>().CheckAsync()).App!.InstallerUrl);
+
+        // The installer is added to the same release afterwards. The next check picks it up without emailing again.
+        env.State.ReleaseAssets["ScanRelaySetup-9.1.0.exe"] = [1, 2, 3];
+        var status = await env.Get<UpdateChecker>().CheckAsync();
+
+        Assert.EndsWith("/releases/download/v9.1.0/ScanRelaySetup-9.1.0.exe", status.App!.InstallerUrl);
+        Assert.Single(env.State.Outbox);
+        Assert.EndsWith("ScanRelaySetup-9.1.0.exe", (await env.Get<UpdateChecker>().GetStatusAsync()).App!.InstallerUrl);
+    }
+
+    [Fact]
     public async Task A_security_release_says_so_in_the_subject()
     {
         await using var env = await StartAsync();

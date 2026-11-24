@@ -48,7 +48,14 @@ public sealed partial class MockCloudServer : IAsyncDisposable
         app.Map("/upload/{session}", server.HandleUploadSessionAsync);
         app.MapGet("/github-api/repos/{owner}/{repo}/releases/latest", (string owner, string repo) =>
             state.Release is { } r
-                ? Results.Json(new { tag_name = r.Tag, name = r.Name, body = r.Body, html_url = $"https://github.example/{owner}/{repo}/releases/tag/{r.Tag}" })
+                ? Results.Json(new
+                {
+                    tag_name = r.Tag,
+                    name = r.Name,
+                    body = r.Body,
+                    html_url = $"https://github.example/{owner}/{repo}/releases/tag/{r.Tag}",
+                    assets = state.ReleaseAssets.Keys.Order().Select(a => new { name = a, browser_download_url = $"https://github.example/{owner}/{repo}/releases/download/{r.Tag}/{a}" }),
+                })
                 : Results.NotFound());
         app.MapGet("/github/{owner}/{repo}/releases/latest/download/{asset}", (string asset) =>
             state.ReleaseAssets.TryGetValue(asset, out var bytes) ? Results.Bytes(bytes) : Results.NotFound());

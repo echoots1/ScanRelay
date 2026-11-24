@@ -39,6 +39,7 @@ public sealed class DirectorySync(
     TimeProvider time,
     ILogger<DirectorySync> logger)
 {
+    private const string QuietSyncKey = "lastQuietSync";
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _noOneDrive = new();
@@ -48,7 +49,7 @@ public sealed class DirectorySync(
 
     public bool IsRunning => _oneAtATime.CurrentCount == 0;
 
-    /// <summary>Runs a sync or a preview. Returns the run's id.</summary>
+    /// <summary>Runs a sync or a preview. Returns the run's id, or 0 for a scheduled sync that found nothing to change and so was not recorded.</summary>
     public async Task<int> RunAsync(RunKind kind, RunTrigger trigger, Actor actor, CancellationToken ct = default)
     {
         await _oneAtATime.WaitAsync(ct);
@@ -81,6 +82,19 @@ public sealed class DirectorySync(
             await db.SaveChangesAsync(ct);
             Changed?.Invoke();
             await ExecuteAsync(db, run, approved: false, onlyPrinter: null, force: false, ct);
+
+            // An hourly check that found nothing to do is not worth a line on the Runs page.
+            // Only the time is kept, so the Dashboard can still say when the list was last checked.
+            if (trigger == RunTrigger.Schedule && kind == RunKind.Sync && run.Status == RunStatus.Succeeded
+                && run.PeopleAdded == 0 && run.PeopleRemoved == 0 && run.Pushes.Count == 0)
+            {
+                db.Runs.Remove(run);
+                await db.SaveChangesAsync(ct);
+                await settings.SetStateAsync(QuietSyncKey, time.GetUtcNow().UtcDateTime.ToString("o"), ct);
+                Changed?.Invoke();
+                return 0;
+            }
+
             return run.Id;
         }
         finally
@@ -88,6 +102,10 @@ public sealed class DirectorySync(
             _oneAtATime.Release();
         }
     }
+
+    /// <summary>When a scheduled sync last ran and found nothing to change. Such syncs are not listed as runs.</summary>
+    public async Task<DateTime?> LastQuietSyncAsync(CancellationToken ct = default) =>
+        DateTime.TryParse(await settings.GetStateAsync(QuietSyncKey, ct), null, System.Globalization.DateTimeStyles.RoundtripKind, out var when) ? when.ToUniversalTime() : null;
 
     /// <summary>Lets a run the change guard stopped go ahead.</summary>
     public async Task<string?> ApproveAsync(int runId, Actor actor, CancellationToken ct = default)

@@ -3,6 +3,7 @@
 @inject SettingsStore Settings
 @inject JobPipeline Pipeline
 @inject UpdateChecker Updates
+@inject DirectorySync Sync
 @inject SettingsReview Review
 
 <PageTitle>Dashboard · ScanRelay</PageTitle>
@@ -18,7 +19,18 @@
 {
     <div class="banner @(app.Security ? "bad" : "info")">
         <strong>@(app.Security ? "Security update" : "Update") @app.Version is available.</strong>
-        Download the new installer from <a href="@app.Url" target="_blank" rel="noopener">the release page</a> and run it on the server as an administrator. Scans are not lost during an update.
+        Run the new installer on the server as an administrator. Scans are not lost during an update.
+        <div class="toolbar" style="margin:10px 0 0">
+            @if (app.InstallerUrl is not null)
+            {
+                <a class="button primary" href="@app.InstallerUrl" rel="noopener">Download the installer</a>
+            }
+            <a class="button" href="@app.Url" target="_blank" rel="noopener">What changed, and the steps</a>
+        </div>
+        @if (app.InstallerUrl is not null)
+        {
+            <div class="small" style="margin-top:6px">It downloads to the computer you are on now. If that is not the server, copy it across, or open this page on the server. The app never installs an update itself.</div>
+        }
     </div>
 }
 @if (_update?.Modules.Count > 0)
@@ -36,13 +48,17 @@
         <div class="label">Last sync</div>
         @if (_lastSync is null)
         {
-            <div class="value">—</div><div class="note">No sync has run yet</div>
+            <div class="value">—</div><div class="note">@(_lastQuietSync is null ? "No sync has run yet" : $"Last checked {Fmt.Ago(_lastQuietSync, NowUtc)}, no changes")</div>
         }
         else
         {
             var b = Badge.For(_lastSync.Status);
             <div style="margin:6px 0"><Badge Text="@b.Text" Kind="@b.Kind" /></div>
             <div class="note">@Fmt.Ago(_lastSync.StartedUtc, NowUtc) · <a href="/runs">Open Runs</a></div>
+            @if (_lastQuietSync > _lastSync.StartedUtc)
+            {
+                <div class="note">Last checked @Fmt.Ago(_lastQuietSync, NowUtc), no changes</div>
+            }
         }
     </div>
 </div>
@@ -152,9 +168,11 @@ else
             .Concat(pushes.Select(p => new ErrorRow(p.StartedUtc, "Push to " + p.Printer.Name, p.Error, "/runs")))
             .OrderByDescending(e => e.When).Take(10)];
         _update = await Updates.GetStatusAsync();
+        _lastQuietSync = await Sync.LastQuietSyncAsync();
         _reviewCount = (await Review.GetPendingAsync()).Count;
     }
 
     private bool _seenSetup;
+    private DateTime? _lastQuietSync;
     private int _reviewCount;
 }

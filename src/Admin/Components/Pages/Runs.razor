@@ -5,7 +5,7 @@
 
 <PageTitle>Runs · ScanRelay</PageTitle>
 <h1>Runs</h1>
-<p class="lead">Every sync run and every push to a printer. A sync reads the groups, then hands each printer that differs its full list.</p>
+<p class="lead">Every sync that changed something or was started by a person, and every push to a printer. Scheduled syncs that find nothing to change are not listed.@(_lastQuiet is null ? "" : $" The last of those was {Fmt.Ago(_lastQuiet, NowUtc)}.")</p>
 <Messages Notice="@Notice" Error="@Error" />
 
 @if (_noSyncGroup)
@@ -124,12 +124,14 @@
     private List<Run> _runs = [];
     private readonly HashSet<int> _open = [];
     private bool _noSyncGroup;
+    private DateTime? _lastQuiet;
 
     protected override TimeSpan? RefreshEvery => TimeSpan.FromSeconds(5);
 
     protected override async Task LoadAsync()
     {
         _noSyncGroup = (await Settings.GetAsync()).DefaultSyncGroupId is null;
+        _lastQuiet = await Sync.LastQuietSyncAsync();
         await using var db = await Db.CreateDbContextAsync();
         _runs = await db.Runs.AsNoTracking().Include(r => r.Pushes).ThenInclude(p => p.Printer)
             .OrderByDescending(r => r.StartedUtc).Take(100).AsSplitQuery().ToListAsync();

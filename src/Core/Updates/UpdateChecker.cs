@@ -8,7 +8,8 @@ using ScanRelay.Core.Settings;
 
 namespace ScanRelay.Core.Updates;
 
-public sealed record AppUpdate(string Version, string Url, string Notes, bool Security, DateTime FirstSeenUtc, DateTime? EmailedUtc, DateTime? RemindedUtc);
+/// <param name="InstallerUrl">Where the new installer itself can be downloaded, when the release has one.</param>
+public sealed record AppUpdate(string Version, string Url, string Notes, bool Security, DateTime FirstSeenUtc, DateTime? EmailedUtc, DateTime? RemindedUtc, string? InstallerUrl = null);
 
 public sealed record ModuleUpdate(string Id, string Installed, string Available);
 
@@ -134,7 +135,8 @@ public sealed class UpdateChecker(
         var version = System.Version.Parse(tag.TrimStart('v', 'V'));
         if (version <= ModuleHost.AppVersion) return null;
         var text = version.ToString(3);
-        if (previous?.Version == text) return previous;
+        var installer = InstallerUrl(root);
+        if (previous?.Version == text) return previous with { InstallerUrl = installer ?? previous.InstallerUrl };
         var notes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "";
         var name = root.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
         return new AppUpdate(
@@ -144,7 +146,26 @@ public sealed class UpdateChecker(
             (name + notes).Contains("[security]", StringComparison.OrdinalIgnoreCase),
             now,
             null,
-            null);
+            null,
+            installer);
+    }
+
+    /// <summary>The installer attached to a release, if it has one.</summary>
+    private static string? InstallerUrl(JsonElement release)
+    {
+        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array) return null;
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            var url = asset.TryGetProperty("browser_download_url", out var u) ? u.GetString() : null;
+            if (name.StartsWith("ScanRelaySetup", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                && Uri.TryCreate(url, UriKind.Absolute, out var parsed) && parsed.Scheme is "https" or "http")
+            {
+                return url;
+            }
+        }
+
+        return null;
     }
 
     private Task<bool> SendAsync(AppUpdate app, bool reminder, CancellationToken ct)

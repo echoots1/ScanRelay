@@ -65,6 +65,12 @@ public sealed class SyncTests : IAsyncLifetime
         return await db.Runs.Include(r => r.Pushes).SingleAsync(r => r.Id == id);
     }
 
+    private async Task<int> RunCountAsync()
+    {
+        await using var db = await DbAsync();
+        return await db.Runs.CountAsync();
+    }
+
     private bool FolderExists(MockUser user) => Directory.Exists(Path.Combine(_env.Data.Inbox, user.Id.ToString()));
 
     [Fact]
@@ -117,12 +123,32 @@ public sealed class SyncTests : IAsyncLifetime
         await RunAsync();
         var writes = _mock.Writes;
 
-        var run = await RunAsync(trigger: RunTrigger.Schedule);
+        var run = await RunAsync();
 
         Assert.Equal(RunStatus.Succeeded, run.Status);
         Assert.Empty(run.Pushes);
         Assert.Equal(writes, _mock.Writes);
-        Assert.Null(run.Actor);
+    }
+
+    [Fact]
+    public async Task A_scheduled_sync_that_finds_nothing_to_change_is_not_listed_as_a_run()
+    {
+        await AddPrinterAsync();
+        Assert.NotEqual(0, await Sync.RunAsync(RunKind.Sync, RunTrigger.Schedule, Actor.Service));
+        Assert.Null(await Sync.LastQuietSyncAsync());
+        var runs = await RunCountAsync();
+
+        Assert.Equal(0, await Sync.RunAsync(RunKind.Sync, RunTrigger.Schedule, Actor.Service));
+        Assert.Equal(0, await Sync.RunAsync(RunKind.Sync, RunTrigger.Schedule, Actor.Service));
+
+        Assert.Equal(runs, await RunCountAsync());
+        Assert.NotNull(await Sync.LastQuietSyncAsync());
+
+        // One that does change something is listed, and so is one a person started.
+        _staff.Members.Remove(_people[0].Id);
+        Assert.NotEqual(0, await Sync.RunAsync(RunKind.Sync, RunTrigger.Schedule, Actor.Service));
+        Assert.NotEqual(0, await Sync.RunAsync(RunKind.Sync, RunTrigger.Manual, Admin));
+        Assert.Equal(runs + 2, await RunCountAsync());
     }
 
     [Fact]
@@ -332,7 +358,7 @@ public sealed class SyncTests : IAsyncLifetime
         Assert.Equal("ScanRelay: A sync was stopped by the change guard", Assert.Single(_env.State.Outbox).Subject);
 
         // The schedule does not pile more runs or emails on top of the one waiting.
-        Assert.Equal(held.Id, (await RunAsync(trigger: RunTrigger.Schedule)).Id);
+        Assert.Equal(held.Id, await Sync.RunAsync(RunKind.Sync, RunTrigger.Schedule, Actor.Service));
         Assert.Single(_env.State.Outbox);
 
         Assert.Null(await Sync.ApproveAsync(held.Id, Admin));
