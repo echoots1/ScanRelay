@@ -30,6 +30,7 @@ public sealed partial class MockCanon : IAsyncDisposable
     private string _token = "1000000001";
     private string? _exportPassword;
     private int _exportPolls;
+    private string? _downloadKey;
     private int _importPolls;
 
     private MockCanon(WebApplication app) => _app = app;
@@ -181,13 +182,27 @@ public sealed partial class MockCanon : IAsyncDisposable
                     return;
                 }
 
+                // Ready: the Export page again, now carrying the address the file is fetched from.
+                _downloadKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+                await Html(Page("Export",
+                    $"<form><input type=\"hidden\" name=\"iToken\" value=\"{NewToken()}\"></form><script>document.location=\"{Address}/elf/dcm/export?pass={_downloadKey}&target=1&onError=/m_import_dev_mng_e_result.html\";</script>"));
+                return;
+            }
+
+            case "/elf/dcm/export":
+                if (_exportPassword is null || _downloadKey is null || request.Query["pass"] != _downloadKey || request.Query["target"] != "1")
+                {
+                    context.Response.Redirect("/m_import_dev_mng_e_result.html?code=2");
+                    return;
+                }
+
                 Interlocked.Increment(ref Exports);
                 context.Response.ContentType = "application/octet-stream";
                 context.Response.Headers.ContentDisposition = "attachment; filename=\"compact.dcm\"";
                 await context.Response.Body.WriteAsync(BuildExport(_exportPassword));
                 _exportPassword = null;
+                _downloadKey = null;
                 return;
-            }
 
             case "/json/dcm_export_result.json":
                 // Asking here before the file has been fetched is what a first version of the module did. The real printer answers "File error".

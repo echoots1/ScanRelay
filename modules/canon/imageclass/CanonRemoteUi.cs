@@ -54,6 +54,9 @@ public sealed partial class CanonRemoteUi : IDisposable
     [GeneratedRegex("<input type=\"hidden\" name=\"([^\"]+)\"[^>]*value=\"([^\"]*)\"", RegexOptions.IgnoreCase)]
     private static partial Regex HiddenPattern();
 
+    [GeneratedRegex("(?:https?://[^\"'\\s<>]+)?/elf/dcm/export\\?[^\"'\\s<>]+", RegexOptions.IgnoreCase)]
+    private static partial Regex DownloadPattern();
+
     [GeneratedRegex("<p class=\"MainMessage\">([^<]*)</p>", RegexOptions.IgnoreCase)]
     private static partial Regex MessagePattern();
 
@@ -119,6 +122,22 @@ public sealed partial class CanonRemoteUi : IDisposable
         // is still working. This is what a real MF642C does.
         for (var attempt = 0; attempt < 60 && file is null; attempt++)
         {
+            // When the file is ready the printer shows the Export page again, this time carrying the
+            // address the file is fetched from.
+            if (DownloadPattern().Match(html) is { Success: true } ready)
+            {
+                var address = WebUtility.HtmlDecode(ready.Value);
+                (file, html, where) = await SendForFileAsync(
+                    new HttpRequestMessage(HttpMethod.Get, Absolute(address)), "GET " + address[..address.IndexOf('?')] + " (the address the Export page gives for the file)", ct);
+                if (file is null)
+                {
+                    var said = MessagePattern().Match(html) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : "nothing this module knows";
+                    throw new CanonException($"The printer prepared the export but did not hand over the file. It said: \"{said}\"");
+                }
+
+                break;
+            }
+
             if (where.Contains("m_import_dev_mng_export.html", StringComparison.Ordinal))
             {
                 throw new CanonException(ExplainRefusal(where, "export"));
@@ -340,7 +359,7 @@ public sealed partial class CanonRemoteUi : IDisposable
         // Of a page, only what matters for finding the way: its title, its links and its scripts' addresses.
         if (TitlePattern().Match(body) is { Success: true } t) Trace("       title: " + WithoutPrinterName(WebUtility.HtmlDecode(t.Groups[1].Value)));
         var interesting = Links(body).Where(IsWorthFollowing).Distinct().Take(20).ToList();
-        if (interesting.Count > 0) Trace("       points at: " + string.Join("  ", interesting));
+        if (interesting.Count > 0) Trace("       points at: " + string.Join("  ", interesting.Select(i => i.Contains("pass=", StringComparison.Ordinal) ? i[..i.IndexOf('?')] + "?(left out)" : i)));
         foreach (Match call in Regex.Matches(body, "createXMLHttpRequest\\(\"(\\w+)\",\\s*\"([^\"]+)\"")) Trace($"       script calls: {call.Groups[1].Value} {call.Groups[2].Value}");
         foreach (Match field in PasswordFieldPattern().Matches(body)) Trace("       password box: " + (field.Groups[1].Success ? field.Groups[1].Value : field.Groups[2].Value));
 
