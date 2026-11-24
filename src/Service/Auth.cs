@@ -61,12 +61,7 @@ public sealed class SetupGate
     }
 
     /// <summary>True when the request comes from the server itself and not through a proxy.</summary>
-    public static bool IsLocal(HttpContext context)
-    {
-        var remote = context.Connection.RemoteIpAddress;
-        if (remote is null || !System.Net.IPAddress.IsLoopback(remote)) return false;
-        return !context.Request.Headers.ContainsKey("X-Forwarded-For") && !context.Request.Headers.ContainsKey("Forwarded");
-    }
+    public static bool IsLocal(HttpContext context) => ScanRelay.Admin.LocalVisitor.IsLocalRequest(context);
 }
 
 /// <summary>Identifies this install of the program files, so a Repair's "reopen setup" is honoured once.</summary>

@@ -133,6 +133,7 @@ internal sealed class WizardForm : Form
             WizardFlow.Modify => [Page<MaintenancePage>(), .. questions, .. apply],
             WizardFlow.Repair => [Page<MaintenancePage>(), .. apply],
             WizardFlow.Update => [Page<UpdatePage>(), .. apply],
+            WizardFlow.Modules => [Page<ModulesPage>(), .. apply],
             _ => _model.State is not null && _sequence.Contains(Page<MaintenancePage>())
                 ? [Page<MaintenancePage>(), Page<UninstallPage>(), Page<ProgressPage>(), Page<DonePage>()]
                 : [Page<UninstallPage>(), Page<ProgressPage>(), Page<DonePage>()],

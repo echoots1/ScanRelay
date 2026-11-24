@@ -10,6 +10,9 @@ internal enum WizardFlow
     Repair,
     Update,
     Uninstall,
+
+    /// <summary>Only the Modules step, with everything else as it is installed.</summary>
+    Modules,
 }
 
 /// <summary>What the pages share: the answers so far and what is already installed.</summary>

@@ -5,11 +5,24 @@
 @inject UpdateChecker Updates
 @inject ModuleCatalog Catalog
 @inject SettingsStore Settings
+@inject LocalVisitor Local
 
 <PageTitle>Modules · ScanRelay</PageTitle>
 <h1>Modules</h1>
 <p class="lead">Support for a printer comes from a module. Modules are added, updated and removed through the installer, because installing code needs administrator rights on the server. The admin screen cannot install code.</p>
 <Messages Notice="@Notice" Error="@Error" />
+
+@if (Local.IsLocal)
+{
+    <div class="toolbar">
+        <a class="button primary" target="_top" href="@LocalVisitor.ModulesSetupPath">Add or update modules</a>
+        <span class="muted">Opens setup at its Modules step, on this server. Windows asks for an administrator first.</span>
+    </div>
+}
+else
+{
+    <p class="hint">To add or update modules, open this page in a browser on the server itself, or run the installer there and open the Modules step. Setup shows on the server's own screen, so it cannot be started from another computer.</p>
+}
 
 <div class="table-wrap">
     <table>

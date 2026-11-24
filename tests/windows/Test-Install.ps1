@@ -179,6 +179,10 @@ $registered = Get-ItemProperty $uninstallKey -ErrorAction SilentlyContinue
 Check "Windows lists ScanRelay under Installed apps with Modify and Uninstall" {
     $registered.DisplayName -eq "ScanRelay" -and $registered.UninstallString -match "/uninstall" -and $registered.ModifyPath -match "/modify"
 }
+Check "the link that opens setup at its Modules step is registered and passes nothing from the link" {
+    $command = (Get-ItemProperty "HKLM:\SOFTWARE\Classes\scanrelay-setup\shell\open\command" -ErrorAction SilentlyContinue).'(default)'
+    $command -eq "`"$installFolder\ScanRelaySetup.exe`" /modules"
+}
 Check "the installer copied itself into the program folder" { Test-Path "$installFolder\ScanRelaySetup.exe" }
 
 if ($Module) {
@@ -211,6 +215,7 @@ Check "the share is gone" { -not (Get-SmbShare -Name $share -ErrorAction Silentl
 Check "the printer account is gone" { -not (Get-LocalUser -Name $account -ErrorAction SilentlyContinue) }
 Check "the firewall rule is gone" { -not (Get-NetFirewallRule -DisplayName "ScanRelay admin screen" -ErrorAction SilentlyContinue) }
 Check "ScanRelay is no longer under Installed apps" { -not (Test-Path $uninstallKey) }
+Check "the setup link is no longer registered" { -not (Test-Path "HKLM:\SOFTWARE\Classes\scanrelay-setup") }
 Check "both certificates are gone" { -not (Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -in @($install.GraphCertThumbprint, $install.WebCertThumbprint) }) }
 Check "the data folder is gone" { -not (Test-Path $dataFolder) }
 Check "the program folder is gone" { -not (Test-Path $installFolder) }

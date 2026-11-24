@@ -6,6 +6,9 @@ public enum SetupMode
     Auto,
     Modify,
     Uninstall,
+
+    /// <summary>Straight to the Modules step of an existing install. The admin screen's button starts this.</summary>
+    Modules,
 }
 
 /// <summary>How setup was started.</summary>
@@ -18,6 +21,7 @@ public sealed record CommandLine(SetupMode Mode, bool Quiet, string? AnswersFile
     public const string Usage = """
         ScanRelaySetup.exe                              Install, or change an existing install.
         ScanRelaySetup.exe /modify                      Change, repair or remove an existing install.
+        ScanRelaySetup.exe /modules                     Add, update or remove printer modules on an existing install.
         ScanRelaySetup.exe /uninstall                   Remove ScanRelay.
         ScanRelaySetup.exe /quiet /answers <file.json>  Install, repair or update with no windows.
         ScanRelaySetup.exe /quiet /uninstall [/keepdata]
@@ -45,10 +49,16 @@ public sealed record CommandLine(SetupMode Mode, bool Quiet, string? AnswersFile
                     break;
                 case "modify":
                     if (mode == SetupMode.Uninstall) error ??= "/modify and /uninstall cannot be used together.";
+                    if (mode == SetupMode.Modules) error ??= "/modules cannot be used with /modify or /uninstall.";
                     mode = SetupMode.Modify;
+                    break;
+                case "modules":
+                    if (mode != SetupMode.Auto) error ??= "/modules cannot be used with /modify or /uninstall.";
+                    mode = SetupMode.Modules;
                     break;
                 case "uninstall":
                     if (mode == SetupMode.Modify) error ??= "/modify and /uninstall cannot be used together.";
+                    if (mode == SetupMode.Modules) error ??= "/modules cannot be used with /modify or /uninstall.";
                     mode = SetupMode.Uninstall;
                     break;
                 case "keepdata":
@@ -71,6 +81,7 @@ public sealed record CommandLine(SetupMode Mode, bool Quiet, string? AnswersFile
         if (error is null && answers is not null && mode == SetupMode.Uninstall) error = "/answers cannot be used with /uninstall.";
         if (error is null && answers is not null && !quiet) error = "/answers only goes with /quiet.";
         if (error is null && quiet && mode == SetupMode.Modify) error = "/modify opens a window, so it cannot be used with /quiet. Use /quiet /answers <file.json> to change an install.";
+        if (error is null && quiet && mode == SetupMode.Modules) error = "/modules opens a window, so it cannot be used with /quiet. Use /quiet /answers <file.json> to change an install.";
         return new CommandLine(mode, quiet, answers, keepData, help, error);
     }
 }

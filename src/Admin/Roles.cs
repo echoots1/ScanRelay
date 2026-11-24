@@ -31,9 +31,30 @@ public sealed class CurrentUser(AuthenticationStateProvider auth)
     public async Task<bool> IsAdminAsync() => (await GetAsync()).IsInRole(Roles.Admin);
 }
 
+/// <summary>
+/// Whether the person is using a browser on the server itself. Some things only make sense
+/// there, such as opening setup, which runs on the server's own screen.
+/// </summary>
+public sealed class LocalVisitor(Microsoft.AspNetCore.Http.IHttpContextAccessor accessor)
+{
+    /// <summary>The link that opens setup at its Modules step. The installer registers it on the server.</summary>
+    public const string ModulesSetupPath = "/local/modules-setup";
+
+    // Read once, when the page's connection is made: that request comes from the person's own browser.
+    public bool IsLocal { get; } = accessor.HttpContext is { } context && IsLocalRequest(context);
+
+    /// <summary>True when the request comes from the server itself and not through a proxy.</summary>
+    public static bool IsLocalRequest(Microsoft.AspNetCore.Http.HttpContext context)
+    {
+        var remote = context.Connection.RemoteIpAddress;
+        if (remote is null || !System.Net.IPAddress.IsLoopback(remote)) return false;
+        return !context.Request.Headers.ContainsKey("X-Forwarded-For") && !context.Request.Headers.ContainsKey("Forwarded");
+    }
+}
+
 public static class AdminRegistration
 {
-    public static IServiceCollection AddScanRelayAdmin(this IServiceCollection services) => services.AddScoped<CurrentUser>();
+    public static IServiceCollection AddScanRelayAdmin(this IServiceCollection services) => services.AddScoped<CurrentUser>().AddScoped<LocalVisitor>();
 }
 
 public static class Fmt

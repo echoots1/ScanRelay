@@ -117,6 +117,7 @@ internal static class Program
         {
             SetupMode.Uninstall => WizardFlow.Uninstall,
             SetupMode.Modify => WizardFlow.Maintenance,
+            SetupMode.Modules => WizardFlow.Modules,
             _ when state is null => WizardFlow.Install,
             _ when engine.IsUpdate(state) => WizardFlow.Update,
             _ => WizardFlow.Maintenance,

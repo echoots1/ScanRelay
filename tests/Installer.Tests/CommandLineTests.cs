@@ -19,6 +19,7 @@ public class CommandLineTests
     [InlineData("--modify", SetupMode.Modify)]
     [InlineData("/uninstall", SetupMode.Uninstall)]
     [InlineData("-uninstall", SetupMode.Uninstall)]
+    [InlineData("/modules", SetupMode.Modules)]
     public void A_mode_opens_the_matching_screen(string arg, SetupMode expected)
     {
         var line = CommandLine.Parse([arg]);
@@ -93,4 +94,11 @@ public class CommandLineTests
         Assert.True(CommandLine.Parse(["/?"]).Help);
         Assert.Contains("/quiet /answers", CommandLine.Usage);
     }
+
+    [Theory]
+    [InlineData("/modules", "/quiet")]
+    [InlineData("/modules", "/uninstall")]
+    [InlineData("/modify", "/modules")]
+    public void The_modules_step_opens_a_window_and_goes_with_nothing_else(string first, string second) =>
+        Assert.NotNull(CommandLine.Parse([first, second]).Error);
 }

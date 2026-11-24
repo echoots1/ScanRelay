@@ -182,6 +182,18 @@ public static class ServiceHost
             return Results.File(file.Content, file.ContentType, file.FileName);
         }).RequireAuthorization(Roles.Admin);
 
+        // Opens setup at its Modules step. Setup runs on the server's own screen, so this only answers a browser on the server.
+        app.MapGet(ScanRelay.Admin.LocalVisitor.ModulesSetupPath, async (HttpContext context, ClaimsPrincipal user, AuditLog audit) =>
+        {
+            if (!SetupGate.IsLocal(context))
+            {
+                return Results.Content(Pages.Simple(("Only on the server", "Setup opens on the server's own screen, so this only works in a browser on the server itself.", false)), "text/html; charset=utf-8", statusCode: 403);
+            }
+
+            await audit.WriteAsync(ToActor(user), "Setup opened for modules");
+            return Results.Redirect("scanrelay-setup:modules");
+        }).RequireAuthorization(Roles.Admin);
+
         // The public half of the Graph certificate, for creating the app registration by hand.
         app.MapGet("/files/graph-certificate", (GraphCertificate certificate) =>
             Results.File(Convert.FromBase64String(certificate.PublicKeyBase64()), "application/pkix-cert", "scanrelay-graph.cer"))

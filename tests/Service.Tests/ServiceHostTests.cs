@@ -144,6 +144,22 @@ public sealed class ServiceHostTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
     }
 
+    [Theory]
+    [InlineData("127.0.0.1", false, HttpStatusCode.Redirect)]
+    [InlineData("127.0.0.1", true, HttpStatusCode.Forbidden)]
+    [InlineData("203.0.113.9", false, HttpStatusCode.Forbidden)]
+    public async Task Setup_for_modules_only_opens_from_a_browser_on_the_server(string address, bool viaProxy, HttpStatusCode expected)
+    {
+        var client = Client();
+        _remoteAddress = IPAddress.Parse(address);
+        if (viaProxy) client.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.9");
+
+        var answer = await client.GetAsync("/local/modules-setup");
+
+        Assert.Equal(expected, answer.StatusCode);
+        if (expected == HttpStatusCode.Redirect) Assert.Equal("scanrelay-setup:modules", answer.Headers.Location?.OriginalString);
+    }
+
     [Fact]
     public async Task The_first_admin_sign_in_finishes_setup_and_closes_the_open_window()
     {

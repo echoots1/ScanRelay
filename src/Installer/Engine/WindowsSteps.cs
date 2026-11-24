@@ -759,6 +759,9 @@ internal static class WindowsSteps
 
     // ---- Installed apps ----
 
+    public const string SetupLinkScheme = "scanrelay-setup";
+    public const string SetupLinkKey = @"SOFTWARE\Classes\" + SetupLinkScheme;
+
     public static void RegisterInstalledApp(SetupLog log, string installFolder, string version)
     {
         var setup = Path.Combine(installFolder, SetupExe);
@@ -780,12 +783,22 @@ internal static class WindowsSteps
         key.SetValue("EstimatedSize", (int)Math.Min(int.MaxValue, bytes / 1024), RegistryValueKind.DWord);
         key.SetValue("InstallDate", DateTime.Now.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture));
         log.Line($"Registered ScanRelay {version} in Windows installed apps (HKLM\\{InstalledState.UninstallKey}).");
+
+        // A link the admin screen can offer, in a browser on this server, that opens setup at its Modules step.
+        // Nothing from the link is passed to setup, so a link cannot make it do anything else.
+        using var link = hklm.CreateSubKey(SetupLinkKey, writable: true);
+        link.SetValue("", "URL:ScanRelay setup");
+        link.SetValue("URL Protocol", "");
+        using var command = link.CreateSubKey(@"shell\open\command", writable: true);
+        command.SetValue("", $"\"{setup}\" /modules");
+        log.Line($"Registered the {SetupLinkScheme}: link for opening setup's Modules step.");
     }
 
     public static void UnregisterInstalledApp(SetupLog log)
     {
         using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
         hklm.DeleteSubKeyTree(InstalledState.UninstallKey, throwOnMissingSubKey: false);
+        hklm.DeleteSubKeyTree(SetupLinkKey, throwOnMissingSubKey: false);
         log.Line("Removed ScanRelay from Windows installed apps.");
     }
 

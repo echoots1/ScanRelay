@@ -235,6 +235,14 @@ log('a person can be added by hand, and one without OneDrive is refused');
 await page.getByRole('link', { name: 'Modules' }).click();
 await page.locator('tr', { hasText: 'scanrelay-sample' }).getByText('Loaded').waitFor();
 await page.getByText('Official').first().waitFor();
+// The browser is on the server here, so setup can be opened; through a proxy the route refuses.
+const openSetup = page.getByRole('link', { name: 'Add or update modules' });
+assert.equal(await openSetup.getAttribute('href'), '/local/modules-setup');
+const opened = await page.request.get(app + '/local/modules-setup', { maxRedirects: 0 });
+assert.equal(opened.status(), 302);
+assert.equal(opened.headers()['location'], 'scanrelay-setup:modules');
+const proxied = await page.request.get(app + '/local/modules-setup', { maxRedirects: 0, headers: { 'X-Forwarded-For': '203.0.113.9' } });
+assert.equal(proxied.status(), 403);
 await shot(page, 'modules');
 await page.getByRole('link', { name: 'Audit log' }).click();
 await page.getByText('Setup finished').waitFor();
