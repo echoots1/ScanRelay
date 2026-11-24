@@ -137,6 +137,34 @@ await page.getByRole('button', { name: 'Sync now' }).click();
 await eventually(async () => (await state()).printerEntries.length === 7, 'the default group back on the printer');
 log('a printer given its own group lists only that group, and goes back to the default group when it is removed');
 
+// ---- people assigned to a printer by name -----------------------------------------
+await page.getByRole('link', { name: 'Printers' }).click();
+await page.locator('tr', { hasText: 'Front office printer' }).getByRole('button', { name: 'Edit' }).click();
+await page.getByLabel('Only the people assigned below').check();
+await page.getByLabel('People assigned to this printer').fill('Sam');
+await page.getByText('Nobody synced into ScanRelay matches').waitFor();
+await page.getByLabel('People assigned to this printer').fill('cy ex');
+await page.locator('li', { hasText: 'Cy Example' }).getByRole('button', { name: 'Assign' }).click();
+await page.getByLabel('People assigned to this printer').fill('dee');
+await page.locator('li', { hasText: 'Dee Example' }).getByRole('button', { name: 'Assign' }).click();
+await shot(page, 'printer-assigned');
+await page.getByRole('button', { name: 'Save' }).click();
+await page.getByText('Saved. Test the connection').waitFor();
+await page.getByRole('link', { name: 'Runs' }).click();
+await page.getByRole('button', { name: 'Sync now' }).click();
+await eventually(async () => (await state()).printerEntries.join() === 'Cy Example,Dee Example', 'only the assigned people on the printer');
+await page.getByRole('link', { name: 'Printers' }).click();
+await page.locator('tr', { hasText: 'Front office printer' }).getByRole('button', { name: 'Edit' }).click();
+await page.locator('li', { hasText: 'Cy Example' }).getByRole('button', { name: 'Remove' }).click();
+await page.locator('li', { hasText: 'Dee Example' }).getByRole('button', { name: 'Remove' }).click();
+await page.getByLabel('Only the people assigned below').uncheck();
+await page.getByRole('button', { name: 'Save' }).click();
+await page.getByText('Saved. Test the connection').waitFor();
+await page.getByRole('link', { name: 'Runs' }).click();
+await page.getByRole('button', { name: 'Sync now' }).click();
+await eventually(async () => (await state()).printerEntries.length === 7, 'the default group back on the printer');
+log('a printer can list only people assigned by name, chosen from those already synced');
+
 // ---- a scan ------------------------------------------------------------------
 await post('/scan/Ann%20Example');
 await page.getByRole('link', { name: 'Jobs' }).click();

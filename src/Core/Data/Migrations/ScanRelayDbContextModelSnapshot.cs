@@ -176,6 +176,9 @@ namespace ScanRelay.Core.Data.Migrations
                     b.Property<string>("AdminUser")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AssignedOnly")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 

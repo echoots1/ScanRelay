@@ -43,7 +43,7 @@ public class Person
     public List<PersonPrinter> Printers { get; set; } = [];
 }
 
-/// <summary>A manual person placed on one chosen printer.</summary>
+/// <summary>A person assigned to one chosen printer, on top of whatever group that printer lists.</summary>
 public class PersonPrinter
 {
     public Guid PersonId { get; set; }
@@ -64,6 +64,9 @@ public class Printer
 
     /// <summary>This printer's own smaller group, if it has one. Null means the default sync group.</summary>
     public Guid? SyncGroupId { get; set; }
+
+    /// <summary>List only the people assigned to this printer one by one. No group is used, not even the default.</summary>
+    public bool AssignedOnly { get; set; }
 
     /// <summary>That group's name, as it was when chosen. For showing only.</summary>
     public string? SyncGroupName { get; set; }

@@ -289,6 +289,71 @@ public sealed class SyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_synced_person_can_be_assigned_to_one_printer_on_top_of_its_group()
+    {
+        await using var small = await MockPrinter.StartAsync();
+        var frontDesk = _env.State.AddGroup("Front Desk", _people[0]);
+        await AddPrinterAsync();
+        var printer = await AddPrinterAsync("Small printer", small, frontDesk.Id);
+        await RunAsync();
+        await using (var db = await DbAsync())
+        {
+            db.PersonPrinters.Add(new PersonPrinter { PersonId = _people[2].Id, PrinterId = printer.Id });
+            await db.SaveChangesAsync();
+        }
+
+        await RunAsync();
+
+        Assert.Equal(["Ann Example", "Cy Example"], small.Managed.Select(e => e.Name).Order());
+        Assert.Equal(4, _mock.Managed.Count);
+    }
+
+    [Fact]
+    public async Task A_printer_set_to_assigned_people_only_lists_just_them_and_no_group()
+    {
+        await using var personal = await MockPrinter.StartAsync();
+        await AddPrinterAsync();
+        var printer = await AddPrinterAsync("One person's printer", personal);
+        var everywhere = _env.State.AddUser("Manual Everywhere");
+        await RunAsync();
+        Assert.Equal(4, personal.Managed.Count);
+        await using (var db = await DbAsync())
+        {
+            (await db.Printers.SingleAsync(p => p.Id == printer.Id)).AssignedOnly = true;
+            db.PersonPrinters.Add(new PersonPrinter { PersonId = _people[1].Id, PrinterId = printer.Id });
+            db.People.Add(new Person { Id = everywhere.Id, DisplayName = everywhere.DisplayName, UserPrincipalName = everywhere.Upn, Source = PersonSource.Manual, OnAllPrinters = true, RemovedUtc = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        await RunAsync();
+
+        Assert.Equal(["Bob Example"], personal.Managed.Select(e => e.Name));
+        Assert.Equal(5, _mock.Managed.Count);
+        Assert.True(FolderExists(_people[1]));
+    }
+
+    [Fact]
+    public async Task An_assigned_person_who_leaves_every_group_comes_off_the_printer()
+    {
+        await using var personal = await MockPrinter.StartAsync();
+        var printer = await AddPrinterAsync("One person's printer", personal);
+        await RunAsync();
+        await using (var db = await DbAsync())
+        {
+            (await db.Printers.SingleAsync(p => p.Id == printer.Id)).AssignedOnly = true;
+            db.PersonPrinters.Add(new PersonPrinter { PersonId = _people[1].Id, PrinterId = printer.Id });
+            await db.SaveChangesAsync();
+        }
+
+        await RunAsync();
+        Assert.Single(personal.Managed);
+        _staff.Members.Remove(_people[1].Id);
+        await RunAsync();
+
+        Assert.Empty(personal.Managed);
+    }
+
+    [Fact]
     public async Task Manual_people_and_exclusions_are_kept_through_every_sync()
     {
         await using var second = await MockPrinter.StartAsync();

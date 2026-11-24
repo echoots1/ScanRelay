@@ -38,7 +38,7 @@
                                 @if (module is null) { <div><Badge Text="Not installed" Kind="bad" /></div> }
                                 else if (!module.Usable) { <div><Badge Text="Paused" Kind="warn" /></div> }
                             </td>
-                            <td>@p.Entries entries<div class="muted small">@(p.Printer.SyncGroupId is null ? "Default sync group" : $"Own group: {p.Printer.SyncGroupName ?? "chosen"}")</div></td>
+                            <td>@p.Entries entries<div class="muted small">@(p.Printer.AssignedOnly ? "Assigned people only" : p.Printer.SyncGroupId is null ? "Default sync group" : $"Own group: {p.Printer.SyncGroupName ?? "chosen"}")</div></td>
                             <td>@Fmt.Ago(p.Printer.LastReachableUtc, NowUtc)</td>
                             <td class="actions">
                                 <button class="small" disabled="@Busy" @onclick="() => TestAsync(p.Printer)">Test connection</button>
@@ -171,9 +171,46 @@
                 <span class="muted">@(_form.Stored.Count == 0 ? "Not read yet." : _form.Read ? "Read just now. Save to keep it." : "Read before and stored. Read again after changing the printer's address book by hand.")</span>
             </div>
         }
+        <h3>Who this printer lists</h3>
+        <div class="field"><label><input type="checkbox" @bind="_form.AssignedOnly" /> Only the people assigned below</label>
+            <div class="hint">Ticked: this printer lists just the people you assign to it here. No group is used, not even the default one, and people added by hand to every printer are left off. For a printer that belongs to one person or a few.</div></div>
+        @if (!_form.AssignedOnly)
+        {
         <GroupPicker Label="This printer's own group (optional)" AllowNone="true" GroupId="_form.GroupId" GroupName="@_form.GroupName"
                      Hint="Leave empty and this printer lists everyone in the default sync group. Choose a group and it lists that group's members instead: the default group is left out for this printer. People added by hand to every printer are still included. Takes effect at the next sync."
                      Changed="g => { _form.GroupId = g?.Id; _form.GroupName = g?.DisplayName; }" />
+        }
+        <div class="field"><label for="p-assign">People assigned to this printer</label>
+            @if (_form.Assigned.Count == 0)
+            {
+                <div class="muted">@(_form.AssignedOnly ? "Nobody yet, so this printer would list nobody." : "Nobody. The printer lists its group only.")</div>
+            }
+            else
+            {
+                <ul class="plain">
+                    @foreach (var person in _synced.Where(p => _form.Assigned.Contains(p.Id)))
+                    {
+                        <li>@person.DisplayName <span class="muted small">@person.UserPrincipalName</span>
+                            <button class="small" @onclick="() => _form.Assigned.Remove(person.Id)">Remove</button></li>
+                    }
+                </ul>
+            }
+            <input id="p-assign" type="text" placeholder="Type a name to find someone" @bind="_form.Find" @bind:event="oninput" autocomplete="off" />
+            @if (_form.Find.Trim().Length > 0)
+            {
+                var found = _synced.Where(p => !_form.Assigned.Contains(p.Id)
+                    && (p.DisplayName.Contains(_form.Find.Trim(), StringComparison.CurrentCultureIgnoreCase) || p.UserPrincipalName.Contains(_form.Find.Trim(), StringComparison.OrdinalIgnoreCase))).Take(8).ToList();
+                <ul class="plain">
+                    @foreach (var person in found)
+                    {
+                        <li>@person.DisplayName <span class="muted small">@person.UserPrincipalName</span>
+                            <button class="small" @onclick="() => { _form.Assigned.Add(person.Id); _form.Find = string.Empty; }">Assign</button></li>
+                    }
+                    @if (found.Count == 0) { <li class="muted">Nobody synced into ScanRelay matches.</li> }
+                </ul>
+            }
+            <div class="hint">Assigned people are listed on this printer on top of its group. Only people ScanRelay has already synced can be chosen: someone new must first be in a sync group, or be added on the People page, and a sync must have run. Takes effect at the next sync.</div>
+        </div>
         <div class="toolbar">
             <button class="primary" disabled="@Busy" @onclick="SaveAsync">Save</button>
             <button @onclick="() => { _form = null; _adding = false; }">Cancel</button>
@@ -202,11 +239,17 @@
         public string? GroupName;
         public Dictionary<string, string> Options = [];
 
+        public bool AssignedOnly;
+        public HashSet<Guid> Assigned = [];
+        public string Find = "";
+
         /// <summary>What the module read from the printer, encrypted. Kept as it is and never shown.</summary>
         public Dictionary<string, string> Stored = [];
         public bool Read;
     }
 
+    /// <summary>Everyone ScanRelay has synced and not excluded: the only people who can be assigned to a printer.</summary>
+    private List<Person> _synced = [];
     private List<Row> _printers = [];
     private IReadOnlyList<InstalledPrinter> _installed = [];
     private CatalogIndex? _catalog;
@@ -220,6 +263,7 @@
         var printers = await db.Printers.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
         var counts = await db.PrinterEntries.GroupBy(e => e.PrinterId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
         _printers = [.. printers.Select(p => new Row(p, counts.GetValueOrDefault(p.Id)))];
+        _synced = await db.People.AsNoTracking().Include(p => p.Printers).Where(p => p.RemovedUtc == null && !p.Excluded).OrderBy(p => p.DisplayName).ToListAsync();
     }
 
     private async Task StartAddAsync()
@@ -252,6 +296,8 @@
             Id = p.Id, Name = p.Name, Address = p.Address, Model = p.Model ?? "", ModuleId = p.ModuleId,
             AdminUser = p.AdminUser ?? "", HasPassword = p.AdminPasswordProtected is not null, GroupId = p.SyncGroupId,
             GroupName = p.SyncGroupId is null ? null : p.SyncGroupName ?? "Chosen group",
+            AssignedOnly = p.AssignedOnly,
+            Assigned = [.. _synced.Where(person => person.Printers.Any(l => l.PrinterId == p.Id)).Select(person => person.Id)],
         };
         if (Modules.Find(p.ModuleId)?.Data is { } data) _form.Options = PrinterService.EffectiveOptions(p, data);
         _form.Stored = _form.Options.Where(o => o.Value.StartsWith(PrinterService.ProtectedPrefix, StringComparison.Ordinal)).ToDictionary(o => o.Key, o => o.Value);
@@ -315,14 +361,27 @@
             printer.Address = f.Address.Trim();
             printer.Model = f.Model.Trim();
             printer.ModuleId = f.ModuleId;
-            printer.SyncGroupId = f.GroupId;
-            printer.SyncGroupName = f.GroupId is null ? null : f.GroupName;
+            printer.AssignedOnly = f.AssignedOnly;
+            printer.SyncGroupId = f.AssignedOnly ? null : f.GroupId;
+            printer.SyncGroupName = printer.SyncGroupId is null ? null : f.GroupName;
             printer.AdminUser = string.IsNullOrWhiteSpace(f.AdminUser) ? null : f.AdminUser.Trim();
             printer.OptionsJson = System.Text.Json.JsonSerializer.Serialize(overrides);
             if (f.AdminPassword.Length > 0) printer.AdminPasswordProtected = Protector.ProtectBytes(f.AdminPassword);
             await db.SaveChangesAsync();
+
+            // The people assigned by name. Links to people who are no longer synced are left alone: they are not shown here, so they were not chosen away.
+            var shown = _synced.Select(p => p.Id).ToHashSet();
+            var links = await db.PersonPrinters.Where(l => l.PrinterId == printer.Id).ToListAsync();
+            db.PersonPrinters.RemoveRange(links.Where(l => shown.Contains(l.PersonId) && !f.Assigned.Contains(l.PersonId)));
+            foreach (var id in f.Assigned.Where(id => shown.Contains(id) && links.All(l => l.PersonId != id)))
+            {
+                db.PersonPrinters.Add(new PersonPrinter { PersonId = id, PrinterId = printer.Id });
+            }
+
+            await db.SaveChangesAsync();
+            var who = printer.AssignedOnly ? "assigned people only" : printer.SyncGroupId is null ? "default sync group" : "own group " + printer.SyncGroupName;
             await Audit.WriteAsync(Actor, f.Id == 0 ? "Printer added" : "Printer changed", printer.Name,
-                $"{printer.Address}, module {printer.ModuleId}, {(printer.SyncGroupId is null ? "default sync group" : "own group " + printer.SyncGroupName)}");
+                $"{printer.Address}, module {printer.ModuleId}, {who}, {f.Assigned.Count} assigned by name");
             if (f.Read) await Audit.WriteAsync(Actor, "Printer read for its module", printer.Name);
             _form = null;
             _adding = false;

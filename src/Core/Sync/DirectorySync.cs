@@ -245,7 +245,7 @@ public sealed class DirectorySync(
             var people = await db.People.Include(p => p.Printers).ToListAsync(ct);
 
             // 1. Read the group members from Graph.
-            var groupIds = allPrinters.Select(p => p.SyncGroupId).Append(s.DefaultSyncGroupId).Where(g => g is not null).Select(g => g!.Value).Distinct().ToList();
+            var groupIds = allPrinters.Where(p => !p.AssignedOnly).Select(p => p.SyncGroupId).Append(s.DefaultSyncGroupId).Where(g => g is not null).Select(g => g!.Value).Distinct().ToList();
             var members = new Dictionary<Guid, IReadOnlyList<DirectoryUser>>();
             foreach (var groupId in groupIds) members[groupId] = await cloud.GetGroupMembersAsync(groupId, ct);
 
@@ -292,10 +292,12 @@ public sealed class DirectorySync(
             var wantedByPrinter = new Dictionary<int, List<WantedEntry>>();
             foreach (var printer in allPrinters)
             {
-                var groupMembers = members[printer.SyncGroupId ?? s.DefaultSyncGroupId.Value].Select(u => u.Id).ToHashSet();
+                // A printer lists its group, or the default one, plus anyone assigned to it by name.
+                // One set to "assigned only" lists just those people: no group, and nobody added to every printer.
+                var groupMembers = printer.AssignedOnly ? [] : members[printer.SyncGroupId ?? s.DefaultSyncGroupId.Value].Select(u => u.Id).ToHashSet();
                 wantedByPrinter[printer.Id] = [.. eligible.Values
-                    .Where(u => groupMembers.Contains(u.Id) || people.Any(p => p.Id == u.Id && p.Source == PersonSource.Manual
-                        && (p.OnAllPrinters || p.Printers.Any(l => l.PrinterId == printer.Id))))
+                    .Where(u => groupMembers.Contains(u.Id) || people.Any(p => p.Id == u.Id
+                        && (p.Printers.Any(l => l.PrinterId == printer.Id) || (p.Source == PersonSource.Manual && p.OnAllPrinters && !printer.AssignedOnly))))
                     .Select(u => new WantedEntry(u.Id, u.DisplayName, s.IncludeEmail ? u.Mail : null))
                     .OrderBy(e => e.DisplayName, StringComparer.CurrentCultureIgnoreCase)];
             }
