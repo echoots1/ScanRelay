@@ -234,6 +234,17 @@ public sealed class CanonModuleTests : IAsyncLifetime
         Assert.Equal(expected, CanonRemoteUi.WithoutPrinterName(title));
     }
 
+    [Theory]
+    [InlineData("/m_import_dev_mng_export.html?err=3", "export is still being performed")]
+    [InlineData("/m_import_dev_mng_export.html?err=2", "import is still being performed")]
+    [InlineData("/m_import_dev_mng_export.html?err=1", "PIN is incorrect")]
+    [InlineData("/m_import_dev_mng_import.html?err=5", "wants its address book PIN")]
+    [InlineData("/m_import_dev_mng_export.html", "without a reason this module knows")]
+    public void The_printers_own_reason_for_refusing_is_passed_on(string address, string expected)
+    {
+        Assert.Contains(expected, CanonRemoteUi.ExplainRefusal(address, "export"));
+    }
+
     [Fact]
     public void A_recorded_page_leaves_the_printers_name_out_of_both_places_it_appears()
     {

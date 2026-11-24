@@ -121,9 +121,7 @@ public sealed partial class CanonRemoteUi : IDisposable
         {
             if (where.Contains("m_import_dev_mng_export.html", StringComparison.Ordinal))
             {
-                throw new CanonException(where.Contains("err=1", StringComparison.Ordinal) || where.Contains("err=5", StringComparison.Ordinal)
-                    ? "The printer wants its address book PIN, or the one given is incorrect. Enter it in this printer's settings."
-                    : "The printer would not start the export. Another import or export may be running.");
+                throw new CanonException(ExplainRefusal(where, "export"));
             }
 
             var form = FormPattern().Match(html);
@@ -168,9 +166,7 @@ public sealed partial class CanonRemoteUi : IDisposable
 
         if (start.Value.TryGetProperty("redirect", out var refused) && refused.GetString() is { Length: > 0 } back)
         {
-            throw new CanonException(back.Contains("err=1", StringComparison.Ordinal) ? "The printer says the address book PIN is incorrect."
-                : back.Contains("err=5", StringComparison.Ordinal) ? "The printer wants its address book PIN. Enter it in this printer's settings."
-                : "The printer would not start the import: " + back);
+            throw new CanonException(ExplainRefusal(back, "import"));
         }
 
         var uploadUrl = start.Value.TryGetProperty("url", out var u) ? u.GetString() : null;
@@ -298,6 +294,21 @@ public sealed partial class CanonRemoteUi : IDisposable
         {
             request.Dispose();
         }
+    }
+
+    /// <summary>The printer's own reasons for sending someone back to the Export or Import page, by the code in the address.</summary>
+    public static string ExplainRefusal(string address, string doing)
+    {
+        var code = Regex.Match(address, @"err=(\d+)") is { Success: true } m ? m.Groups[1].Value : "";
+        return code switch
+        {
+            "1" => "The printer says the address book PIN is incorrect. Check it in this printer's settings.",
+            "2" => $"The printer would not start the {doing} because it says an import is still being performed. Wait a few minutes and try again. If it stays that way, restart the printer.",
+            "3" => $"The printer would not start the {doing} because it says an export is still being performed. An earlier export that was not finished can leave it like this. Wait a few minutes and try again. If it stays that way, restart the printer.",
+            "4" => $"The printer says nothing was selected to {doing}. This printer's Remote UI may differ from the one this module was written for.",
+            "5" => "The printer wants its address book PIN. Enter it in this printer's settings.",
+            _ => $"The printer would not start the {doing} and sent the request back without a reason this module knows ({address}).",
+        };
     }
 
     /// <summary>A whole page with the owner's name for the printer taken out of the two places it appears.</summary>
