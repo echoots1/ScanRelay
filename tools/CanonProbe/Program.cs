@@ -115,8 +115,8 @@ public static partial class CanonProbeProgram
 
                     book.Renumber();
                     exported.SetAddressBook(book);
-                    await ui.ImportAddressBookAsync(exported.Write(), filePassword, Option("--book-pin"), default);
-                    Say("The printer says the load finished. Reading the address book back to check.");
+                    var said = await ui.ImportAddressBookAsync(exported.Write(), filePassword, Option("--book-pin"), default);
+                    Say($"The printer says the load finished: \"{said}\". Reading the address book back to check.");
 
                     CanonBook after;
                     try

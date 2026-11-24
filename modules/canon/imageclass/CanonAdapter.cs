@@ -143,11 +143,11 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
 
             return await WithSessionAsync(device, async ui =>
             {
-                await ui.ImportAddressBookAsync(bytes, filePassword, Pin(device), cancellationToken);
+                var said = await ui.ImportAddressBookAsync(bytes, filePassword, Pin(device), cancellationToken);
                 LastLoaded[state] = wantedByKey;
-                context.Log($"Loaded the address book onto {device.Address}: {added} added, {updated} updated, {removed} removed. {others} other entries sent back as they were read.");
+                context.Log($"Loaded the address book onto {device.Address}: {added} added, {updated} updated, {removed} removed. {others} other entries sent back as they were read. The printer said: \"{said}\"");
                 return new ApplyResult(true, added, updated, removed, null);
-            }, cancellationToken);
+            }, cancellationToken, record: true);
         }
         catch (Exception e) when (IsExpected(e))
         {
@@ -187,27 +187,43 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
         a.Name == b.Name && a.Host.Equals(b.Host, StringComparison.OrdinalIgnoreCase) && a.Path.Equals(b.Path, StringComparison.OrdinalIgnoreCase)
         && a.UserName == b.UserName && a.EncryptedPassword == b.EncryptedPassword;
 
-    private async Task<T> WithSessionAsync<T>(Device device, Func<CanonRemoteUi, Task<T>> work, CancellationToken ct)
+    private async Task<T> WithSessionAsync<T>(Device device, Func<CanonRemoteUi, Task<T>> work, CancellationToken ct, bool record = false)
     {
         if (string.IsNullOrEmpty(device.AdminUser) || string.IsNullOrEmpty(device.AdminPassword))
         {
             throw new CanonException("Enter the printer's System Manager ID and PIN in this printer's settings. The module signs in with them.");
         }
 
-        using var ui = Ui(device);
-        await ui.SignInAsync(device.AdminUser, device.AdminPassword, ct);
+        var said = new List<string>();
+        using var ui = Ui(device, said.Add);
         try
         {
-            return await work(ui);
+            await ui.SignInAsync(device.AdminUser, device.AdminPassword, ct);
+            try
+            {
+                return await work(ui);
+            }
+            finally
+            {
+                await ui.SignOutAsync(ct);
+            }
+        }
+        catch (Exception e) when (IsExpected(e))
+        {
+            // What was asked and answered, for working out what went wrong. It holds no passwords and no address book contents.
+            context.Log($"The exchange with {device.Address} that ended in \"{Explain(e)}\":{Environment.NewLine}{string.Join(Environment.NewLine, said)}");
+            said.Clear();
+            throw;
         }
         finally
         {
-            await ui.SignOutAsync(ct);
+            // A load is recorded even when it worked: the printer's own account of it is the only evidence there is.
+            if (record && said.Count > 0) context.Log($"The exchange with {device.Address} for this load:{Environment.NewLine}{string.Join(Environment.NewLine, said)}");
         }
     }
 
-    private CanonRemoteUi Ui(Device device) => UiFactory?.Invoke(device)
-        ?? new CanonRemoteUi(device.Address, !string.Equals(device.Options.GetValueOrDefault("secure", "true"), "false", StringComparison.OrdinalIgnoreCase));
+    private CanonRemoteUi Ui(Device device, Action<string>? trace = null) => UiFactory?.Invoke(device)
+        ?? new CanonRemoteUi(device.Address, !string.Equals(device.Options.GetValueOrDefault("secure", "true"), "false", StringComparison.OrdinalIgnoreCase)) { Trace = trace };
 
     private static string? Pin(Device device) => device.Options.GetValueOrDefault("address_book_pin") is { Length: > 0 } pin ? pin : null;
 

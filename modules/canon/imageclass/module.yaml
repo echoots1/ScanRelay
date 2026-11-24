@@ -1,5 +1,5 @@
 id: canon-imageclass
-version: 0.2.0
+version: 0.2.1
 vendor: Canon
 family: imageCLASS MF
 models: [MF642C, MF643C, MF644C]    # the MF642C/643C/644C share one Remote UI

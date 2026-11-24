@@ -213,6 +213,25 @@ public sealed class CanonModuleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_load_the_printer_finishes_but_does_not_take_is_a_failure_with_the_printers_own_words()
+    {
+        _printer.ImportFailure = "File error. Try the operation again.";
+
+        var result = await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann")]);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("did not take the address book", result.Error);
+        Assert.Contains("File error. Try the operation again.", result.Error);
+        Assert.Empty(Ours);
+
+        // And it is not remembered as loaded: once the printer takes it, the same list goes again.
+        _printer.ImportFailure = null;
+        var again = await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann")]);
+        Assert.True(again.Succeeded, again.Error);
+        Assert.Equal(1, again.Added);
+    }
+
+    [Fact]
     public async Task A_printer_that_stays_busy_is_reported_with_its_own_reason()
     {
         _printer.BusyAfterExport = TimeSpan.FromMinutes(5);

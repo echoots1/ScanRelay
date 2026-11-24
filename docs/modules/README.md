@@ -134,6 +134,12 @@ Work has started with the MF642C.
   Two things follow. An entry added at the printer after the read is lost at
   the next push, so read again after changing the address book by hand. And if
   the share password changes, retype it in the `ScanRelay` entry and read again.
+- **A load that finishes is not yet a load that worked.** The first push from
+  the app to a real MF642C reported success while the address book stayed as
+  it was. The module now reads the printer's result page and treats anything
+  but a plain success as a failed push, with the printer's own words, and
+  writes the whole exchange to the service log. Why that load was not taken
+  is not known yet.
 - **A load that is refused because the printer is busy is asked again** every
   15 seconds for up to 3 minutes, which covers a push straight after a read
   or after the nightly check, which also exports.

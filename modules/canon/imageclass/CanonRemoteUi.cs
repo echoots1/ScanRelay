@@ -5,7 +5,10 @@ using System.Text.RegularExpressions;
 
 namespace ScanRelay.Modules.CanonImageClass;
 
-public sealed class CanonException(string message) : Exception(message);
+public class CanonException(string message) : Exception(message);
+
+/// <summary>The printer is doing something else and may agree in a few minutes.</summary>
+public sealed class CanonBusyException(string message) : CanonException(message);
 
 /// <summary>
 /// Signs in to an imageCLASS Remote UI as System Manager and uses its Export and Import
@@ -171,52 +174,53 @@ public sealed partial class CanonRemoteUi : IDisposable
     /// <summary>Called each time a load has to wait.</summary>
     public Action? Waiting { get; init; }
 
-    public async Task ImportAddressBookAsync(byte[] file, string filePassword, string? addressBookPin, CancellationToken ct)
+    /// <summary>Loads an address book file. Returns what the printer said at the end.</summary>
+    public async Task<string> ImportAddressBookAsync(byte[] file, string filePassword, string? addressBookPin, CancellationToken ct)
     {
         // The printer refuses a load for some minutes after an export. Ask again until it agrees.
         var until = DateTime.UtcNow + WaitWhileBusy;
-        string? uploadUrl = null;
-        while (uploadUrl is null)
+        while (true)
         {
-            var (_, page, _) = await GetAsync("/m_import_dev_mng_import.html", ct);
-            var fields = new List<(string, string)>
+            try
             {
-                ("iToken", Token(page, "Import")),
-                ("i2052", filePassword),
-                ("i2070", "0"), ("i2070", "1"),
-                ("i2080", "0"),
-                ("i2140", "0"),
-            };
-            if (!string.IsNullOrEmpty(addressBookPin)) fields.Add(("i2092", addressBookPin));
-
-            var (status, body, _) = await PostFormAsync("/cgi/m_import_dev_mng_import.cgi", fields, ct, secret: "i2052");
-            var start = TryJson(body);
-            string refusal;
-            if (status != 200 || start is null || !start.Value.TryGetProperty("status", out var s) || s.ToString() != "0")
-            {
-                refusal = "The printer would not start the import. Another import or export may be running.";
+                return await ImportOnceAsync(file, filePassword, addressBookPin, ct);
             }
-            else if (start.Value.TryGetProperty("redirect", out var refused) && refused.GetString() is { Length: > 0 } back)
+            catch (CanonBusyException) when (DateTime.UtcNow < until)
             {
-                // A wrong or missing PIN, or nothing selected, will not get better by waiting.
-                if (Regex.IsMatch(back, "err=[145]")) throw new CanonException(ExplainRefusal(back, "import"));
-                refusal = ExplainRefusal(back, "import");
-            }
-            else
-            {
-                uploadUrl = start.Value.TryGetProperty("url", out var u) ? u.GetString() : null;
-                if (string.IsNullOrEmpty(uploadUrl)) throw new CanonException("The printer did not say where to send the file.");
-                break;
-            }
-
-            if (DateTime.UtcNow >= until) throw new CanonException(refusal);
-            Trace?.Invoke($"       not yet: waiting {BusyRetryEvery.TotalSeconds:0} seconds and asking again.");
-            Waiting?.Invoke();
-            await Task.Delay(BusyRetryEvery, ct);
-            using (await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct))
-            {
+                Trace?.Invoke($"       not yet: waiting {BusyRetryEvery.TotalSeconds:0} seconds and asking again.");
+                Waiting?.Invoke();
+                await Task.Delay(BusyRetryEvery, ct);
+                using (await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct))
+                {
+                }
             }
         }
+    }
+
+    private async Task<string> ImportOnceAsync(byte[] file, string filePassword, string? addressBookPin, CancellationToken ct)
+    {
+        var (_, page, _) = await GetAsync("/m_import_dev_mng_import.html", ct);
+        var fields = new List<(string, string)>
+        {
+            ("iToken", Token(page, "Import")),
+            ("i2052", filePassword),
+            ("i2070", "0"), ("i2070", "1"),
+            ("i2080", "0"),
+            ("i2140", "0"),
+        };
+        if (!string.IsNullOrEmpty(addressBookPin)) fields.Add(("i2092", addressBookPin));
+
+        var (status, body, _) = await PostFormAsync("/cgi/m_import_dev_mng_import.cgi", fields, ct, secret: "i2052");
+        var start = TryJson(body);
+        if (status != 200 || start is null || !start.Value.TryGetProperty("status", out var s) || s.ToString() != "0")
+        {
+            throw new CanonBusyException("The printer would not start the import. Another import or export may be running.");
+        }
+
+        if (start.Value.TryGetProperty("redirect", out var refused) && refused.GetString() is { Length: > 0 } back) throw Refusal(back);
+
+        var uploadUrl = start.Value.TryGetProperty("url", out var u) ? u.GetString() : null;
+        if (string.IsNullOrEmpty(uploadUrl)) throw new CanonException("The printer did not say where to send the file.");
 
         using var upload = new MultipartFormDataContent();
         var part = new ByteArrayContent(file);
@@ -224,7 +228,9 @@ public sealed partial class CanonRemoteUi : IDisposable
         upload.Add(part, "importData", "compact.dcm");
         using (var sent = await SendAsync(new HttpRequestMessage(HttpMethod.Post, Absolute(uploadUrl)) { Content = upload }, $"POST {uploadUrl} (the file, {file.Length} bytes)", ct))
         {
-            Describe(sent, await sent.Content.ReadAsStringAsync(ct));
+            var answer = await sent.Content.ReadAsStringAsync(ct);
+            Describe(sent, answer);
+            if (!sent.IsSuccessStatusCode) throw new CanonException($"The printer did not accept the file (it answered {(int)sent.StatusCode}).");
         }
 
         for (var attempt = 0; attempt < 80; attempt++)
@@ -237,8 +243,17 @@ public sealed partial class CanonRemoteUi : IDisposable
             var (code, result, _) = await GetAsync("/json/dcm_import_result.json", ct);
             if (code == 200 && TryJson(result) is { } json && json.TryGetProperty("redirect", out var done) && done.GetString() is { Length: > 0 } where)
             {
-                await GetAsync(where, ct);
-                return;
+                // Finished is not the same as worked. Sent back to the Import page means refused; otherwise the result page says which.
+                if (where.Contains("m_import_dev_mng_import.html", StringComparison.Ordinal)) throw Refusal(where);
+                var (_, html, _) = await GetAsync(where, ct);
+                var said = MessagePattern().Match(html) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : "";
+                if (html.Contains("class=\"Glitch\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new CanonException($"The printer did not take the address book. It said: \"{(said.Length > 0 ? said : "nothing this module knows")}\"");
+                }
+
+                Trace?.Invoke("       the printer's last word: " + (said.Length > 0 ? said : "(none found on the page)"));
+                return said;
             }
 
             await Task.Delay(PollEvery, ct);
@@ -246,6 +261,10 @@ public sealed partial class CanonRemoteUi : IDisposable
 
         throw new CanonException("The printer did not report that the import had finished.");
     }
+
+    /// <summary>A wrong or missing PIN, or nothing selected, will not get better by waiting. Being busy will.</summary>
+    private static CanonException Refusal(string address) =>
+        Regex.IsMatch(address, "err=[145]") ? new CanonException(ExplainRefusal(address, "import")) : new CanonBusyException(ExplainRefusal(address, "import"));
 
     public void Dispose() => _http.Dispose();
 

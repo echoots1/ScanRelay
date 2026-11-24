@@ -49,6 +49,9 @@ public sealed partial class MockCanon : IAsyncDisposable
     /// <summary>The real printer refuses a load for some minutes after an export.</summary>
     public TimeSpan BusyAfterExport { get; set; }
     private DateTime _lastExport;
+
+    /// <summary>Set to have a load finish with this message and change nothing, as the real printer does with a file it cannot use.</summary>
+    public string? ImportFailure { get; set; }
     public int Imports;
     public int Exports;
     public int Port { get; private set; }
@@ -258,7 +261,7 @@ public sealed partial class MockCanon : IAsyncDisposable
                 using var buffer = new MemoryStream();
                 await file.CopyToAsync(buffer);
                 var password = Encoding.UTF8.GetString(Convert.FromBase64String(request.Cookies["importpw"] ?? ""));
-                Load(buffer.ToArray(), password);
+                if (ImportFailure is null) Load(buffer.ToArray(), password);
                 _importPolls = 0;
                 await Json("{\"status\":0}");
                 return;
@@ -273,7 +276,9 @@ public sealed partial class MockCanon : IAsyncDisposable
                 return;
 
             case "/m_import_dev_mng_i_result.html":
-                await Html(Page("Import Result", "<p>The import is complete.</p>"));
+                await Html(Page("Import Result", ImportFailure is null
+                    ? "<div class=\"Normal\"><p class=\"MainMessage\">The import is complete.</p></div>"
+                    : $"<div class=\"Glitch\"><p class=\"MainMessage\">{ImportFailure}</p></div>"));
                 return;
 
             default:
