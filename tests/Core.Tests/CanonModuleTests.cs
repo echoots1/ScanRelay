@@ -235,6 +235,17 @@ public sealed class CanonModuleTests : IAsyncLifetime
     }
 
     [Fact]
+    public void A_recorded_page_leaves_the_printers_name_out_of_both_places_it_appears()
+    {
+        var page = "<html><head><title>Remote UI: Export: Somebody's Printer: MF642C/643C/644C</title></head><body><span id=\"deviceName\">Somebody's Printer / MF642C/643C/644C / Somebody's Printer</span><p>Done</p></body></html>";
+
+        var recorded = CanonRemoteUi.WithoutPrinterNames(page);
+
+        Assert.DoesNotContain("Somebody", recorded);
+        Assert.Contains("<p>Done</p>", recorded);
+    }
+
+    [Fact]
     public async Task The_file_for_applying_by_hand_lists_each_person_without_a_password()
     {
         var file = await _adapter.ExportAsync(Device(), [Person(Guid.NewGuid(), "Ann Example")]);

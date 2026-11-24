@@ -300,6 +300,13 @@ public sealed partial class CanonRemoteUi : IDisposable
         }
     }
 
+    /// <summary>A whole page with the owner's name for the printer taken out of the two places it appears.</summary>
+    public static string WithoutPrinterNames(string html)
+    {
+        html = Regex.Replace(html, "(<span id=\"deviceName\">)[^<]*(</span>)", "$1(printer name)$2", RegexOptions.None, TimeSpan.FromSeconds(1));
+        return TitlePattern().Replace(html, m => "<title>" + WithoutPrinterName(WebUtility.HtmlDecode(m.Groups[1].Value)) + "</title>");
+    }
+
     /// <summary>A page title is "Remote UI: page: the printer's own name: models". The name is whatever its owner called it, so it is left out.</summary>
     public static string WithoutPrinterName(string title)
     {
@@ -325,5 +332,13 @@ public sealed partial class CanonRemoteUi : IDisposable
         if (interesting.Count > 0) Trace("       points at: " + string.Join("  ", interesting));
         foreach (Match call in Regex.Matches(body, "createXMLHttpRequest\\(\"(\\w+)\",\\s*\"([^\"]+)\"")) Trace($"       script calls: {call.Groups[1].Value} {call.Groups[2].Value}");
         foreach (Match field in PasswordFieldPattern().Matches(body)) Trace("       password box: " + (field.Groups[1].Success ? field.Groups[1].Value : field.Groups[2].Value));
+
+        // A short page is one of the in-between pages (progress, result). Those carry no address book
+        // data, and how they are written is exactly what needs to be seen, so they are recorded whole.
+        if (body.Length <= 4000 && final is not null && (final.Contains("_prog") || final.Contains("_result")))
+        {
+            Trace("       page, with the printer's name left out:");
+            foreach (var line in WithoutPrinterNames(body).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) Trace("         | " + line);
+        }
     }
 }
