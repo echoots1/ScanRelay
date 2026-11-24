@@ -43,7 +43,7 @@ modules still can.
      module with no version for the new app, a version too old to update
      directly, and a setting that changed meaning.
 3. Run the server test in [server-test.md](server-test.md).
-4. Commit, then tag and push: `git tag v1.2.0 && git push origin v1.2.0`.
+4. Commit and push. Then on GitHub open Actions, Release, and press **Run workflow** on the branch to release.
 5. Approve the run when asked.
 6. The pipeline leaves a **draft** release with the installer, each module
    package and its signature, the signed module list, and `SHA256SUMS.txt`.

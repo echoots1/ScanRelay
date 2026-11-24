@@ -1,12 +1,10 @@
 name: Release
 
 # A release is built here, from the public repo, and nowhere else.
-# Push a tag such as v1.2.0 to start one, or run it by hand from the Actions page.
 # It stops for approval if the release environment asks for one, then publishes a draft.
+# Started by hand from the Actions page. It releases the version in Directory.Build.props from the
+# chosen branch. Publishing the draft creates the tag, so a tag must not start it a second time.
 on:
-  push:
-    tags: ['v*.*.*']
-  # Or start it by hand: it releases the version in Directory.Build.props from the chosen branch, and creates the tag itself.
   workflow_dispatch:
 
 permissions:
@@ -30,13 +28,14 @@ jobs:
 
       - name: Work out the version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           [xml]$props = Get-Content Directory.Build.props
           $inCode = "$($props.Project.PropertyGroup.Version)".Trim()
-          if ("${{ github.ref_type }}" -eq "tag") {
-            $version = "${{ github.ref_name }}".TrimStart('v')
-            if ($version -ne $inCode) { throw "The tag says $version but Directory.Build.props says $inCode." }
-          }
+          gh release view "v$inCode" --repo "${{ github.repository }}" 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Version $inCode has already been released. Raise the version in Directory.Build.props first." }
+          $global:LASTEXITCODE = 0
           "VERSION=$inCode" >> $env:GITHUB_ENV
 
       - name: Check the signing key
