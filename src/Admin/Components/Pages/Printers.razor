@@ -78,6 +78,7 @@
             <table>
                 <thead><tr><th>Name</th><th>Address</th><th>Model</th><th>Module</th><th></th></tr></thead>
                 <tbody>
+                    @{ var anyModule = Modules.Modules.Any(m => m.Usable); }
                     @foreach (var i in _installed)
                     {
                         var match = Modules.Match(i.Model).FirstOrDefault();
@@ -87,9 +88,13 @@
                             <td>
                                 @if (match is not null) { <Badge Text="@match.Id" Kind="ok" /> }
                                 else if (onGitHub) { <span>A module exists on GitHub. Add it through the installer.</span> }
+                                else if (anyModule) { <span class="muted">No module recognises this name. Windows often gives only the driver's name, not the model. If an installed module covers this printer, choose the module yourself.</span> }
                                 else { <span class="muted">No module covers this model, so it cannot be added.</span> }
                             </td>
-                            <td class="actions">@if (match is not null) { <button class="small primary" @onclick="() => NewForm(i.Name, i.Address, i.Model, match.Id)">Choose</button> }</td>
+                            <td class="actions">
+                                @if (match is not null) { <button class="small primary" @onclick="() => NewForm(i.Name, i.Address, i.Model, match.Id)">Choose</button> }
+                                else if (anyModule) { <button class="small" @onclick="() => NewForm(i.Name, i.Address, string.Empty, Modules.Modules.First(m => m.Usable).Id)">Choose a module</button> }
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -124,7 +129,7 @@
             </select>
             @if (data is not null)
             {
-                <div class="hint">@data.Method @(data.Unofficial ? "This method is not documented by the vendor." : "")
+                <div class="hint">Covers: @string.Join(", ", data.Models). @data.Method @(data.Unofficial ? "This method is not documented by the vendor." : "")
                     @if (data.Prerequisites.Count > 0) { <span>Install first: @string.Join(", ", data.Prerequisites).</span> }
                     @if (data.EntryLimit() is { } limit) { <span>Holds up to @limit people.</span> }
                 </div>
@@ -175,7 +180,7 @@
         </div>
         @if (_form.Id == 0)
         {
-            <p class="hint">After saving: test the connection, push a test entry, then push the full list.</p>
+            <p class="hint">After saving: test the connection, which shows the model the printer itself reports, so you can see the module fits. Then push a test entry, then the full list.</p>
         }
     </div>
 }
