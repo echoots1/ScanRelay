@@ -60,7 +60,7 @@ public sealed partial class CanonRemoteUi : IDisposable
     [GeneratedRegex("(?:https?://[^\"'\\s<>]+)?/elf/dcm/export\\?[^\"'\\s<>]+", RegexOptions.IgnoreCase)]
     private static partial Regex DownloadPattern();
 
-    [GeneratedRegex("<p class=\"MainMessage\">([^<]*)</p>", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("<p class=\"MainMessage\">(.*?)</p>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex MessagePattern();
 
     [GeneratedRegex("name=\"(i\\d+)\"[^>]*type=\"password\"|type=\"password\"[^>]*name=\"(i\\d+)\"")]
@@ -134,7 +134,7 @@ public sealed partial class CanonRemoteUi : IDisposable
                     new HttpRequestMessage(HttpMethod.Get, Absolute(address)), "GET " + address[..address.IndexOf('?')] + " (the address the Export page gives for the file)", ct);
                 if (file is null)
                 {
-                    var said = MessagePattern().Match(html) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : "nothing this module knows";
+                    var said = Message(html) is { Length: > 0 } m ? m : "nothing this module knows";
                     throw new CanonException($"The printer prepared the export but did not hand over the file. It said: \"{said}\"");
                 }
 
@@ -149,7 +149,7 @@ public sealed partial class CanonRemoteUi : IDisposable
             var form = FormPattern().Match(html);
             if (!form.Success || !form.Groups["action"].Value.Contains("e_prog", StringComparison.Ordinal))
             {
-                var said = MessagePattern().Match(html) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : null;
+                var said = Message(html) is { Length: > 0 } m ? m : null;
                 throw new CanonException(said is null
                     ? "The export did not produce a file, and the printer's page was not one this module knows. This printer's Remote UI may differ from the one the module was written for."
                     : $"The printer could not export its address book. It said: \"{said}\"");
@@ -187,7 +187,7 @@ public sealed partial class CanonRemoteUi : IDisposable
             }
             catch (CanonBusyException) when (DateTime.UtcNow < until)
             {
-                Trace?.Invoke($"       not yet: waiting {BusyRetryEvery.TotalSeconds:0} seconds and asking again.");
+                Note($"       not yet: waiting {BusyRetryEvery.TotalSeconds:0} seconds and asking again.");
                 Waiting?.Invoke();
                 await Task.Delay(BusyRetryEvery, ct);
                 using (await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct))
@@ -222,18 +222,29 @@ public sealed partial class CanonRemoteUi : IDisposable
         var uploadUrl = start.Value.TryGetProperty("url", out var u) ? u.GetString() : null;
         if (string.IsNullOrEmpty(uploadUrl)) throw new CanonException("The printer did not say where to send the file.");
 
-        using var upload = new MultipartFormDataContent();
+        // Sent the way a browser sends it: a plain boundary, and the field and file names in quotes.
+        // .NET's own form writes these differently, and a printer's small web server may not read that.
+        var boundary = "----ScanRelay" + Guid.NewGuid().ToString("N");
+        using var upload = new MultipartFormDataContent(boundary);
+        upload.Headers.Remove("Content-Type");
+        upload.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
         var part = new ByteArrayContent(file);
+        part.Headers.TryAddWithoutValidation("Content-Disposition", "form-data; name=\"importData\"; filename=\"addressbook.dcm\"");
         part.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        upload.Add(part, "importData", "compact.dcm");
+        upload.Add(part);
+
+        string? where = null;
         using (var sent = await SendAsync(new HttpRequestMessage(HttpMethod.Post, Absolute(uploadUrl)) { Content = upload }, $"POST {uploadUrl} (the file, {file.Length} bytes)", ct))
         {
             var answer = await sent.Content.ReadAsStringAsync(ct);
             Describe(sent, answer);
             if (!sent.IsSuccessStatusCode) throw new CanonException($"The printer did not accept the file (it answered {(int)sent.StatusCode}).");
+
+            // The answer to the file itself can already be the result, and when it is, it is the one that counts.
+            if (TryJson(answer) is { } told && told.TryGetProperty("redirect", out var r) && r.GetString() is { Length: > 0 } direct) where = direct;
         }
 
-        for (var attempt = 0; attempt < 80; attempt++)
+        for (var attempt = 0; attempt < 80 && where is null; attempt++)
         {
             // The page keeps the session awake while the printer works, so this does too.
             using (var beat = await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct))
@@ -241,26 +252,36 @@ public sealed partial class CanonRemoteUi : IDisposable
             }
 
             var (code, result, _) = await GetAsync("/json/dcm_import_result.json", ct);
-            if (code == 200 && TryJson(result) is { } json && json.TryGetProperty("redirect", out var done) && done.GetString() is { Length: > 0 } where)
-            {
-                // Finished is not the same as worked. Sent back to the Import page means refused; otherwise the result page says which.
-                if (where.Contains("m_import_dev_mng_import.html", StringComparison.Ordinal)) throw Refusal(where);
-                var (_, html, _) = await GetAsync(where, ct);
-                var said = MessagePattern().Match(html) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : "";
-                if (html.Contains("class=\"Glitch\"", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new CanonException($"The printer did not take the address book. It said: \"{(said.Length > 0 ? said : "nothing this module knows")}\"");
-                }
-
-                Trace?.Invoke("       the printer's last word: " + (said.Length > 0 ? said : "(none found on the page)"));
-                return said;
-            }
-
-            await Task.Delay(PollEvery, ct);
+            if (code == 200 && TryJson(result) is { } json && json.TryGetProperty("redirect", out var done) && done.GetString() is { Length: > 0 } finished) where = finished;
+            else await Task.Delay(PollEvery, ct);
         }
 
-        throw new CanonException("The printer did not report that the import had finished.");
+        if (where is null) throw new CanonException("The printer did not report that the import had finished.");
+
+        // Finished is not the same as worked. Sent back to the Import page means refused; otherwise the result page says which.
+        if (where.Contains("m_import_dev_mng_import.html", StringComparison.Ordinal)) throw Refusal(where);
+        var (_, html, _) = await GetAsync(where, ct);
+        var said = Message(html);
+        Note("       the printer's last word: " + (said.Length > 0 ? said : "(none found on the page)"));
+
+        // The printer marks a result that worked as "Normal". Anything else, known or not, is not a success.
+        if (!html.Contains("class=\"Normal\"", StringComparison.OrdinalIgnoreCase) || html.Contains("class=\"Glitch\"", StringComparison.OrdinalIgnoreCase))
+        {
+            var code = Regex.Match(where, @"code=(\d+)") is { Success: true } c ? $" (result {c.Groups[1].Value})" : "";
+            throw new CanonException($"The printer did not take the address book{code}. It said: \"{(said.Length > 0 ? said : "nothing this module knows")}\"");
+        }
+
+        return said;
     }
+
+    /// <summary>The message on a result page, as plain text on one line.</summary>
+    private static string Message(string html) =>
+        MessagePattern().Match(html) is { Success: true } m
+            ? Regex.Replace(WebUtility.HtmlDecode(Regex.Replace(m.Groups[1].Value, "<[^>]+>", " ")), @"\s+", " ").Trim()
+            : "";
+
+    /// <summary>Writes to the record, leaving out the one-time key the printer puts in its file addresses.</summary>
+    private void Note(string line) => Trace?.Invoke(Regex.Replace(line, "pass=[0-9A-Fa-f]+", "pass=(left out)"));
 
     /// <summary>A wrong or missing PIN, or nothing selected, will not get better by waiting. Being busy will.</summary>
     private static CanonException Refusal(string address) =>
@@ -308,7 +329,7 @@ public sealed partial class CanonRemoteUi : IDisposable
         // The file is a gzip archive whatever the printer calls its type, so look at the bytes.
         if (bytes.Length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b)
         {
-            Trace?.Invoke($"    -> {(int)response.StatusCode}, the exported file, {bytes.Length} bytes ({response.Content.Headers.ContentType?.MediaType}; {response.Content.Headers.ContentDisposition})");
+            Note($"    -> {(int)response.StatusCode}, the exported file, {bytes.Length} bytes ({response.Content.Headers.ContentType?.MediaType}; {response.Content.Headers.ContentDisposition})");
             return (bytes, "", final);
         }
 
@@ -338,7 +359,7 @@ public sealed partial class CanonRemoteUi : IDisposable
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, string? what, CancellationToken ct)
     {
-        if (what is not null) Trace?.Invoke(what);
+        if (what is not null) Note(what);
 
         // What a browser sends along with a form. Some Remote UI firmware checks where a request came from.
         if (request.Method == HttpMethod.Post)
@@ -395,26 +416,26 @@ public sealed partial class CanonRemoteUi : IDisposable
         if (Trace is null) return;
         var final = response.RequestMessage?.RequestUri?.PathAndQuery;
         var type = response.Content.Headers.ContentType?.MediaType;
-        Trace($"    -> {(int)response.StatusCode} {type}, {body.Length} characters, ended at {final}");
+        Note($"    -> {(int)response.StatusCode} {type}, {body.Length} characters, ended at {final}");
         if (type is not null && type.Contains("json"))
         {
-            Trace("       " + body.Trim());
+            Note("       " + body.Trim());
             return;
         }
 
         // Of a page, only what matters for finding the way: its title, its links and its scripts' addresses.
-        if (TitlePattern().Match(body) is { Success: true } t) Trace("       title: " + WithoutPrinterName(WebUtility.HtmlDecode(t.Groups[1].Value)));
+        if (TitlePattern().Match(body) is { Success: true } t) Note("       title: " + WithoutPrinterName(WebUtility.HtmlDecode(t.Groups[1].Value)));
         var interesting = Links(body).Where(IsWorthFollowing).Distinct().Take(20).ToList();
-        if (interesting.Count > 0) Trace("       points at: " + string.Join("  ", interesting.Select(i => i.Contains("pass=", StringComparison.Ordinal) ? i[..i.IndexOf('?')] + "?(left out)" : i)));
-        foreach (Match call in Regex.Matches(body, "createXMLHttpRequest\\(\"(\\w+)\",\\s*\"([^\"]+)\"")) Trace($"       script calls: {call.Groups[1].Value} {call.Groups[2].Value}");
-        foreach (Match field in PasswordFieldPattern().Matches(body)) Trace("       password box: " + (field.Groups[1].Success ? field.Groups[1].Value : field.Groups[2].Value));
+        if (interesting.Count > 0) Note("       points at: " + string.Join("  ", interesting.Select(i => i.Contains("pass=", StringComparison.Ordinal) ? i[..i.IndexOf('?')] + "?(left out)" : i)));
+        foreach (Match call in Regex.Matches(body, "createXMLHttpRequest\\(\"(\\w+)\",\\s*\"([^\"]+)\"")) Note($"       script calls: {call.Groups[1].Value} {call.Groups[2].Value}");
+        foreach (Match field in PasswordFieldPattern().Matches(body)) Note("       password box: " + (field.Groups[1].Success ? field.Groups[1].Value : field.Groups[2].Value));
 
         // A short page is one of the in-between pages (progress, result). Those carry no address book
         // data, and how they are written is exactly what needs to be seen, so they are recorded whole.
         if (body.Length <= 4000 && final is not null && (final.Contains("_prog") || final.Contains("_result")))
         {
-            Trace("       page, with the printer's name left out:");
-            foreach (var line in WithoutPrinterNames(body).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) Trace("         | " + line);
+            Note("       page, with the printer's name left out:");
+            foreach (var line in WithoutPrinterNames(body).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) Note("         | " + line);
         }
     }
 }

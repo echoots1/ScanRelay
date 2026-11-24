@@ -134,12 +134,20 @@ Work has started with the MF642C.
   Two things follow. An entry added at the printer after the read is lost at
   the next push, so read again after changing the address book by hand. And if
   the share password changes, retype it in the `ScanRelay` entry and read again.
-- **A load that finishes is not yet a load that worked.** The first push from
-  the app to a real MF642C reported success while the address book stayed as
-  it was. The module now reads the printer's result page and treats anything
-  but a plain success as a failed push, with the printer's own words, and
-  writes the whole exchange to the service log. Why that load was not taken
-  is not known yet.
+- **A load that finishes is not yet a load that worked.** The first loads
+  sent to a real MF642C were not taken, and the module said they were. The
+  printer answers the uploaded file itself: when it cannot use the file it
+  sends the browser to its result address with a code (9 was seen), and that
+  answer is the result. Asking the result address afterwards without a code
+  answers "Import is complete" whatever happened. The module now takes the
+  upload's own answer, counts only a result page the printer marks as normal,
+  and reports anything else with the printer's words.
+- **The file is sent the way a browser sends it.** The refused loads were
+  sent with .NET's own form writer, which quotes the boundary and writes the
+  field name without quotes and an extra `filename*`. The module now writes
+  the form as a browser does. Whether that was the cause of result 9 is not
+  proven until a load from the module is taken by a real printer.
+- **A load that works ends with the printer saying it is restarting.**
 - **A load that is refused because the printer is busy is asked again** every
   15 seconds for up to 3 minutes, which covers a push straight after a read
   or after the nightly check, which also exports.

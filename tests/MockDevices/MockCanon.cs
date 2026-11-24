@@ -31,6 +31,7 @@ public sealed partial class MockCanon : IAsyncDisposable
     private string? _exportPassword;
     private int _exportPolls;
     private string? _downloadKey;
+    private string? _uploadKey;
     private int _importPolls;
 
     private MockCanon(WebApplication app) => _app = app;
@@ -244,26 +245,43 @@ public sealed partial class MockCanon : IAsyncDisposable
 
                 context.Response.Cookies.Append("importpw", Convert.ToBase64String(Encoding.UTF8.GetBytes(form["i2052"].ToString())));
                 NewToken();
-                await Json("{\"status\":0,\"url\":\"/cgi/import_upload.cgi\"}");
+                _uploadKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+                await Json($"{{\n\"url\":\"{Address}/elf/dcm/import?pass={_uploadKey}&target=1&onError=/json/dcm_import_result.json\",\n\"status\":\"0\"\n}}");
                 return;
             }
 
-            case "/cgi/import_upload.cgi":
+            case "/elf/dcm/import":
             {
+                // As the real printer answers: a file it cannot use goes to the result address with a code, which names the result page.
+                // That it wants the form written the way a browser writes it is a guess, from a file .NET's own form sent being refused.
+                var browserLike = !(request.ContentType ?? "").Contains("boundary=\"", StringComparison.Ordinal);
+                if (_uploadKey is null || request.Query["pass"] != _uploadKey || !browserLike)
+                {
+                    context.Response.Redirect("/json/dcm_import_result.json?code=9");
+                    return;
+                }
+
+                _uploadKey = null;
                 var form = await request.ReadFormAsync();
                 var file = form.Files["importData"];
-                if (file is null)
+                if (file is null || !file.ContentDisposition.Contains("name=\"importData\"", StringComparison.Ordinal) || file.ContentDisposition.Contains("filename*", StringComparison.Ordinal))
                 {
-                    context.Response.StatusCode = 400;
+                    context.Response.Redirect("/json/dcm_import_result.json?code=9");
                     return;
                 }
 
                 using var buffer = new MemoryStream();
                 await file.CopyToAsync(buffer);
                 var password = Encoding.UTF8.GetString(Convert.FromBase64String(request.Cookies["importpw"] ?? ""));
-                if (ImportFailure is null) Load(buffer.ToArray(), password);
+                if (ImportFailure is not null)
+                {
+                    context.Response.Redirect("/json/dcm_import_result.json?code=9");
+                    return;
+                }
+
+                Load(buffer.ToArray(), password);
                 _importPolls = 0;
-                await Json("{\"status\":0}");
+                await Json("{\n\"status\":\"0\"\n}");
                 return;
             }
 
@@ -272,13 +290,16 @@ public sealed partial class MockCanon : IAsyncDisposable
                 return;
 
             case "/json/dcm_import_result.json":
-                await Json(++_importPolls < 2 ? "{\"status\":0,\"redirect\":\"\"}" : "{\"status\":0,\"redirect\":\"/m_import_dev_mng_i_result.html?code=0\"}");
+                // With a code: the result page for it. Without: empty while working, then the page that says it is complete.
+                // The real printer also answers "complete" here when nothing was loaded at all, so this alone proves nothing.
+                if (request.Query["code"].ToString() is { Length: > 0 } code) await Json($"{{\n\"redirect\":\"/m_import_dev_mng_i_result.html?code={code}\",\n\"status\":\"0\"\n}}");
+                else await Json(++_importPolls < 2 ? "{\n\"redirect\":\"\",\n\"status\":\"0\"\n}" : "{\n\"redirect\":\"/m_import_dev_mng_i_result.html?code=1\",\n\"status\":\"0\"\n}");
                 return;
 
             case "/m_import_dev_mng_i_result.html":
-                await Html(Page("Import Result", ImportFailure is null
-                    ? "<div class=\"Normal\"><p class=\"MainMessage\">The import is complete.</p></div>"
-                    : $"<div class=\"Glitch\"><p class=\"MainMessage\">{ImportFailure}</p></div>"));
+                await Html(Page("", request.Query["code"] == "1"
+                    ? "<div class=\"Normal\"><p class=\"MainMessage\">Import is complete.<br>Restarting the device...<br>Wait a moment, then access the device again.</p></div>"
+                    : $"<div class=\"Glitch\"><p class=\"MainMessage\">{ImportFailure ?? "Could not import the file."}</p></div>"));
                 return;
 
             default:
