@@ -18,8 +18,8 @@ public sealed record CanonMockEntry(string Name, string Host = "", string Path =
 
 /// <summary>
 /// A fake imageCLASS Remote UI. Sign-in, the Export and Import pages and their requests copy a
-/// real MF642C. Two things are guesses until a real printer has been through them: where the
-/// exported file is fetched from once the export is done, and what the result pages look like.
+/// real MF642C, including how the exported file is fetched through the progress page's form.
+/// What the import's result page looks like is still a guess.
 /// Like the real printer it takes the address book whole, renumbers it, cuts names to 16
 /// characters, and keeps passwords in a form that depends on the file's password.
 /// </summary>
@@ -78,6 +78,11 @@ public sealed partial class MockCanon : IAsyncDisposable
 
     private static string Page(string title, string body) =>
         $"<!DOCTYPE html><html><head><title>Remote UI: {title}: Test Printer: MF642C/643C/644C</title></head><body>{body}</body></html>";
+
+    private string ProgressPage() => Page("",
+        $"<form name=\"mImportDevMngEProg\" id=\"0\" action=\"/cgi/m_import_dev_mng_e_prog.cgi\" method=\"post\" onsubmit=\"return false;\">\n"
+        + $"<input type=\"hidden\" name=\"prog\" id=\"prog\" value=\"prog\" />\n<input type=\"hidden\" name=\"iToken\" value=\"{NewToken()}\" />\n</form>"
+        + "<p class=\"MainMessage\">Exporting...</p>");
 
     private string NewToken() => _token = Random.Shared.NextInt64(1_000_000_000, 9_999_999_999).ToString();
 
@@ -151,25 +156,28 @@ public sealed partial class MockCanon : IAsyncDisposable
 
                 _exportPassword = form["i2082"];
                 _exportPolls = 0;
-                NewToken();
-                await Html(Page("Export", "<p>Exporting...</p><script>createXMLHttpRequest(\"GET\", \"/json/dcm_export_result.json\", cb, null);</script>"));
+                context.Response.Redirect("/m_import_dev_mng_e_prog.html");
                 return;
             }
 
-            case "/json/dcm_export_result.json":
-                await Json(_exportPassword is null || ++_exportPolls < 2
-                    ? "{\"status\":0,\"url\":\"\",\"result\":0}"
-                    : "{\"status\":0,\"url\":\"/m_import_dev_mng_e_result.html\",\"result\":0}");
+            case "/m_import_dev_mng_e_prog.html":
+                await Html(ProgressPage());
                 return;
 
-            case "/m_import_dev_mng_e_result.html":
-                await Html(Page("Export Result", "<p>The export is complete.</p><a href=\"/m_data_management.html\">Back</a> <a href=\"/export/compact.dcm\">Store</a>"));
-                return;
-
-            case "/export/compact.dcm":
-                if (_exportPassword is null)
+            case "/cgi/m_import_dev_mng_e_prog.cgi":
+            {
+                // As on the real printer: the progress page's form is answered with the file once it is
+                // ready, and with the progress page again until then.
+                var form = await request.ReadFormAsync();
+                if (form["iToken"] != _token || form["prog"] != "prog" || _exportPassword is null)
                 {
-                    context.Response.StatusCode = 404;
+                    await Html(Page("", "<div class=\"Glitch\"><p class=\"MainMessage\">File error. Try the operation again.</p></div>"));
+                    return;
+                }
+
+                if (++_exportPolls < 2)
+                {
+                    await Html(ProgressPage());
                     return;
                 }
 
@@ -177,6 +185,17 @@ public sealed partial class MockCanon : IAsyncDisposable
                 context.Response.ContentType = "application/octet-stream";
                 context.Response.Headers.ContentDisposition = "attachment; filename=\"compact.dcm\"";
                 await context.Response.Body.WriteAsync(BuildExport(_exportPassword));
+                _exportPassword = null;
+                return;
+            }
+
+            case "/json/dcm_export_result.json":
+                // Asking here before the file has been fetched is what a first version of the module did. The real printer answers "File error".
+                await Json("{\n\"result\":\"2\",\n\"url\":\"/m_import_dev_mng_e_result.html\",\n\"status\":\"0\"\n}");
+                return;
+
+            case "/m_import_dev_mng_e_result.html":
+                await Html(Page("", "<div class=\"Glitch\"><p class=\"MainMessage\">File error. Try the operation again.</p></div>"));
                 return;
 
             case "/cgi/m_import_dev_mng_import.cgi":

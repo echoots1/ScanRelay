@@ -135,10 +135,11 @@ Work has started with the MF642C.
   "Values from the module". Nothing needs uploading or storing: the encrypted
   password is read fresh from the printer each time.
 - **Built and tested against a mock, not yet run against a printer.** Sign-in
-  and the Export and Import requests follow the real MF642C's pages. One step
-  is a guess: where the exported file is fetched from once the export is
-  done. `tools/CanonProbe` runs the steps against a real printer and records
-  what it answers.
+  works on a real MF642C (main controller 10.05). The export is fetched the
+  way that printer serves it: its "Exporting..." page holds a small form, and
+  the answer to that form is the file. Loading a file back follows the real
+  Import page but has not been run from the module yet. `tools/CanonProbe`
+  runs the steps against a real printer and records what it answers.
 - **A copied encrypted password is accepted, as far as can be seen.** A file
   with one entry's encrypted password copied onto a new entry loaded, and the
   printer shows a password as set on the new entry. That it is the right

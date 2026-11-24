@@ -48,6 +48,15 @@ public sealed partial class CanonRemoteUi : IDisposable
     [GeneratedRegex("(?:href|action|src)=\"([^\"]+)\"|location(?:\\.href)?\\s*=\\s*[\"']([^\"']+)[\"']", RegexOptions.IgnoreCase)]
     private static partial Regex LinkPattern();
 
+    [GeneratedRegex("<form[^>]*action=\"(?<action>[^\"]+)\"[^>]*>.*?</form>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    private static partial Regex FormPattern();
+
+    [GeneratedRegex("<input type=\"hidden\" name=\"([^\"]+)\"[^>]*value=\"([^\"]*)\"", RegexOptions.IgnoreCase)]
+    private static partial Regex HiddenPattern();
+
+    [GeneratedRegex("<p class=\"MainMessage\">([^<]*)</p>", RegexOptions.IgnoreCase)]
+    private static partial Regex MessagePattern();
+
     [GeneratedRegex("name=\"(i\\d+)\"[^>]*type=\"password\"|type=\"password\"[^>]*name=\"(i\\d+)\"")]
     private static partial Regex PasswordFieldPattern();
 
@@ -101,51 +110,39 @@ public sealed partial class CanonRemoteUi : IDisposable
         };
         if (!string.IsNullOrEmpty(addressBookPin)) fields.Add(("i2102", addressBookPin));
 
-        using var response = await SendAsync(
+        var (file, html, where) = await SendForFileAsync(
             new HttpRequestMessage(HttpMethod.Post, _base + "/cgi/m_import_dev_mng_export.cgi") { Content = new FormUrlEncodedContent(fields.Select(f => KeyValuePair.Create(f.Item1, f.Item2))) },
             "POST /cgi/m_import_dev_mng_export.cgi (address book, with a file password)", ct);
-        if (await TryReadFileAsync(response, ct) is { } direct) return direct;
-        var html = await response.Content.ReadAsStringAsync(ct);
-        Describe(response, html);
-        if (response.RequestMessage?.RequestUri?.Query.Contains("err=") == true || html.Contains("err=1", StringComparison.Ordinal) && html.Length < 400)
-        {
-            throw new CanonException("The printer would not start the export. Its address book PIN may be needed, or another import or export is running.");
-        }
 
-        // The printer prepares the file, then says where the result page is.
-        var candidates = new List<string>(Links(html));
-        for (var attempt = 0; attempt < 40; attempt++)
+        // The printer answers with an "Exporting..." page holding a small form, which the browser sends
+        // after a moment. The answer to that form is the file, or the same page again while the printer
+        // is still working. This is what a real MF642C does.
+        for (var attempt = 0; attempt < 60 && file is null; attempt++)
         {
-            var (status, body, _) = await GetAsync("/json/dcm_export_result.json", ct);
-            if (status == 200 && TryJson(body) is { } json)
+            if (where.Contains("m_import_dev_mng_export.html", StringComparison.Ordinal))
             {
-                var url = json.TryGetProperty("url", out var u) ? u.GetString() : null;
-                var result = json.TryGetProperty("result", out var r) ? r.ToString() : "";
-                if (!string.IsNullOrEmpty(url))
-                {
-                    if (url.Contains("m_import_dev_mng_export.html", StringComparison.Ordinal)) throw new CanonException("The printer says the address book PIN is incorrect.");
-                    candidates.Insert(0, url + (url.Contains('?') ? "" : "?code=" + result));
-                    break;
-                }
+                throw new CanonException(where.Contains("err=1", StringComparison.Ordinal) || where.Contains("err=5", StringComparison.Ordinal)
+                    ? "The printer wants its address book PIN, or the one given is incorrect. Enter it in this printer's settings."
+                    : "The printer would not start the export. Another import or export may be running.");
+            }
+
+            var form = FormPattern().Match(html);
+            if (!form.Success || !form.Groups["action"].Value.Contains("e_prog", StringComparison.Ordinal))
+            {
+                var said = MessagePattern().Match(html) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : null;
+                throw new CanonException(said is null
+                    ? "The export did not produce a file, and the printer's page was not one this module knows. This printer's Remote UI may differ from the one the module was written for."
+                    : $"The printer could not export its address book. It said: \"{said}\"");
             }
 
             await Task.Delay(PollEvery, ct);
+            var hidden = HiddenPattern().Matches(form.Value).Select(h => KeyValuePair.Create(h.Groups[1].Value, WebUtility.HtmlDecode(h.Groups[2].Value)));
+            var action = form.Groups["action"].Value;
+            (file, html, where) = await SendForFileAsync(
+                new HttpRequestMessage(HttpMethod.Post, Absolute(action)) { Content = new FormUrlEncodedContent(hidden) }, "POST " + action + " (the progress page's own form)", ct);
         }
 
-        // Follow what the pages point at until one of them is the file.
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < candidates.Count && seen.Count < 25; i++)
-        {
-            var path = candidates[i];
-            if (!IsWorthFollowing(path) || !seen.Add(path)) continue;
-            using var next = await SendAsync(new HttpRequestMessage(HttpMethod.Get, Absolute(path)), "GET " + path, ct);
-            if (await TryReadFileAsync(next, ct) is { } file) return file;
-            var text = await next.Content.ReadAsStringAsync(ct);
-            Describe(next, text);
-            candidates.AddRange(Links(text));
-        }
-
-        throw new CanonException("The export finished but the file could not be found. This printer's Remote UI may differ from the one this module was written for.");
+        return file ?? throw new CanonException("The printer did not finish preparing the export in time.");
     }
 
     /// <summary>Loads an encrypted configuration file's address book onto the printer. It replaces the whole address book.</summary>
@@ -240,20 +237,23 @@ public sealed partial class CanonRemoteUi : IDisposable
         }
     }
 
-    /// <summary>The body, when the answer is the exported file itself and not a page.</summary>
-    private async Task<byte[]?> TryReadFileAsync(HttpResponseMessage response, CancellationToken ct)
+    /// <summary>Sends a request whose answer may be the exported file or may be a page. Returns whichever it was.</summary>
+    private async Task<(byte[]? File, string Html, string FinalUrl)> SendForFileAsync(HttpRequestMessage request, string what, CancellationToken ct)
     {
-        var type = response.Content.Headers.ContentType?.MediaType ?? "";
-        var attachment = response.Content.Headers.ContentDisposition is not null;
-        if (!attachment && (type.Contains("html") || type.Contains("json") || type.Contains("text"))) return null;
+        using var response = await SendAsync(request, what, ct);
         var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var final = response.RequestMessage?.RequestUri?.PathAndQuery ?? "";
+
+        // The file is a gzip archive whatever the printer calls its type, so look at the bytes.
         if (bytes.Length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b)
         {
-            Trace?.Invoke($"    -> {(int)response.StatusCode}, the exported file, {bytes.Length} bytes ({type}; {response.Content.Headers.ContentDisposition})");
-            return bytes;
+            Trace?.Invoke($"    -> {(int)response.StatusCode}, the exported file, {bytes.Length} bytes ({response.Content.Headers.ContentType?.MediaType}; {response.Content.Headers.ContentDisposition})");
+            return (bytes, "", final);
         }
 
-        return null;
+        var html = System.Text.Encoding.UTF8.GetString(bytes);
+        Describe(response, html);
+        return (null, html, final);
     }
 
     private async Task<(int Status, string Body, string FinalUrl)> GetAsync(string path, CancellationToken ct)
