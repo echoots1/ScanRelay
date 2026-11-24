@@ -8,7 +8,7 @@ added.
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
 | `kyocera-ecosys` | ECOSYS M8124cidn | **Working on a real printer.** A sync pushed the list, a scan at the panel reached OneDrive. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
-| `canon-imageclass` | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Reading works on a real MF642C; loading is built against a mock and not yet run on a printer.** See below. |
+| `canon-imageclass` | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Reading and loading work on a real MF642C from the probe tool. A push from the app, and a scan with the copied password, are not confirmed yet.** See below. |
 
 ## The first printers
 
@@ -147,6 +147,17 @@ Work has started with the MF642C.
   field name without quotes and an extra `filename*`. The module now writes
   the form as a browser does. Whether that was the cause of result 9 is not
   proven until a load from the module is taken by a real printer.
+- **A load from the module's code is taken by a real MF642C** (main controller
+  10.05), run with `tools/CanonProbe`: read, then load from the saved copy
+  with one entry added. Sending the file the way a browser does was what the
+  refused loads lacked. A push from the app itself, and a scan to an entry
+  with the copied password, are the remaining proof.
+- **The template entry leaves the printer at the first push.** It is only
+  there to be read. Its user name and stored password are kept, encrypted,
+  with the printer's settings. A later read uses the same file password as the
+  first, so the kept password can still be loaded, and keeps it when the
+  entry is no longer on the printer. To change the share password, make the
+  `ScanRelay` entry again with the new one and read again.
 - **A load that works ends with the printer saying it is restarting.**
 - **A load that is refused because the printer is busy is asked again** every
   15 seconds for up to 3 minutes, which covers a push straight after a read

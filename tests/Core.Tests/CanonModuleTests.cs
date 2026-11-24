@@ -43,7 +43,8 @@ public sealed class CanonModuleTests : IAsyncLifetime
 
     private List<CanonMockEntry> Ours => [.. _printer.Entries.Where(e => e.Path.Length > 40)];
 
-    private List<CanonMockEntry> Theirs => [.. _printer.Entries.Where(e => e.Path.Length <= 40)];
+    /// <summary>Entries that are neither ours nor the template, which the first push takes off the printer.</summary>
+    private List<CanonMockEntry> Theirs => [.. _printer.Entries.Where(e => e.Path.Length <= 40 && e.Name is not ("ScanRelay" or "Scan account"))];
 
     [Fact]
     public void The_module_data_passes_the_schema_and_says_the_method_is_unofficial()
@@ -56,7 +57,7 @@ public sealed class CanonModuleTests : IAsyncLifetime
         Assert.True(data.Unofficial);
         Assert.Contains("named exactly \"ScanRelay\"", data.Method);
         Assert.True(data.MatchesWindowsName("Canon MF642C/643C/644C UFR II"));
-        Assert.Empty(data.TestedFirmware);
+        Assert.Equal(["10.05"], data.TestedFirmware);
     }
 
     [Fact]
@@ -122,7 +123,7 @@ public sealed class CanonModuleTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task An_empty_list_removes_only_our_entries_and_keeps_the_template()
+    public async Task An_empty_list_removes_only_our_entries()
     {
         await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann"), Person(Guid.NewGuid(), "Bob")]);
         var before = Theirs;
@@ -132,7 +133,39 @@ public sealed class CanonModuleTests : IAsyncLifetime
         Assert.Equal(2, result.Removed);
         Assert.Empty(Ours);
         Assert.Equal(before, Theirs);
-        Assert.Contains(_printer.Entries, e => e.Name == "ScanRelay");
+    }
+
+    [Fact]
+    public async Task The_first_push_takes_the_template_entry_off_the_printer_and_later_pushes_still_carry_its_password()
+    {
+        var (ann, bob) = (Person(Guid.NewGuid(), "Ann"), Person(Guid.NewGuid(), "Bob"));
+        var before = Theirs;
+
+        await _adapter.ApplyAsync(Device(), [ann]);
+        Assert.DoesNotContain(_printer.Entries, e => e.Name == "ScanRelay");
+        var later = await _adapter.ApplyAsync(Device(), [ann, bob]);
+
+        Assert.True(later.Succeeded, later.Error);
+        Assert.All(Ours, e => Assert.Equal(SharePassword, e.Password));
+        Assert.Equal(before, Theirs);
+        Assert.DoesNotContain(_printer.Entries, e => e.Name == "ScanRelay");
+    }
+
+    [Fact]
+    public async Task Reading_again_after_the_template_is_gone_keeps_the_password_read_before()
+    {
+        var (ann, bob) = (Person(Guid.NewGuid(), "Ann"), Person(Guid.NewGuid(), "Bob"));
+        await _adapter.ApplyAsync(Device(), [ann]);
+        _printer.Entries.Add(new CanonMockEntry("Added by hand", "fileserver", "somewhere", "someone", "their-own"));
+
+        var read = await ReadAsync();
+        var result = await _adapter.ApplyAsync(Device(), [ann, bob]);
+
+        Assert.True(read.Succeeded, read.Message);
+        Assert.Contains("no longer on the printer", read.Message);
+        Assert.True(result.Succeeded, result.Error);
+        Assert.All(Ours, e => Assert.Equal(SharePassword, e.Password));
+        Assert.Contains(_printer.Entries, e => e.Name == "Added by hand" && e.Password == "their-own");
     }
 
     [Fact]
@@ -140,8 +173,7 @@ public sealed class CanonModuleTests : IAsyncLifetime
     {
         var list = new[] { Person(Guid.NewGuid(), "Ann"), Person(Guid.NewGuid(), "Bob") };
         await _adapter.ApplyAsync(Device(), list);
-        var index = _printer.Entries.FindIndex(e => e.Name == "ScanRelay");
-        _printer.Entries[index] = _printer.Entries[index] with { Password = "a-new-password" };
+        _printer.Entries.Add(new CanonMockEntry("ScanRelay", "scanserver", "Scans$", "scanrelay-printer", "a-new-password"));
         Assert.True((await ReadAsync()).Succeeded);
 
         var result = await _adapter.ApplyAsync(Device(), list);
@@ -161,13 +193,14 @@ public sealed class CanonModuleTests : IAsyncLifetime
         Assert.Contains("Found \"ScanRelay\" with a stored password for scanrelay-printer", result.Message);
         Assert.Equal(before, _printer.Entries);
         Assert.Equal(0, _printer.Imports);
-        Assert.Equal([CanonAdapter.CapturedBook, CanonAdapter.CapturedPassword], result.Values.Keys.Order());
+        Assert.Equal([CanonAdapter.CapturedBook, CanonAdapter.CapturedPassword, CanonAdapter.CapturedTemplate], result.Values.Keys.Order());
     }
 
     [Fact]
     public async Task Without_the_template_entry_reading_fails_and_the_reason_says_what_to_do()
     {
         _printer.Entries.RemoveAll(e => e.Name == "ScanRelay");
+        _read = [];   // never read before, so there is no stored password to fall back on
 
         var result = await _adapter.PrepareAsync(Device());
 

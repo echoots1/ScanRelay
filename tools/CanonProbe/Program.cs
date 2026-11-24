@@ -134,9 +134,11 @@ public static partial class CanonProbeProgram
                             return 1;
                         }
 
+                        // As the app does it: the template was only there to be read, and does not go back onto the printer.
+                        book.Entries.Remove(source);
                         book.Entries.RemoveAll(e => e.Name.Equals(Cut(add), StringComparison.OrdinalIgnoreCase));
                         book.Entries.Add(CanonEntry.Folder(0, Cut(add), source.Host, folder!, source.UserName, source.EncryptedPassword));
-                        Say($"Loading the saved copy plus \"{Cut(add)}\" -> \\\\{source.Host}\\{folder}, user {source.UserName}, password copied from \"{template}\".");
+                        Say($"Loading the saved copy without \"{template}\", plus \"{Cut(add)}\" -> \\\\{source.Host}\\{folder}, user {source.UserName}, password copied from \"{template}\".");
                     }
                     else
                     {

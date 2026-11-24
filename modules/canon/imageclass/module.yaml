@@ -18,6 +18,7 @@ method: >-
   reading, make one shared folder entry on the printer by hand, named exactly "ScanRelay",
   with the printer account and its password: the printer stores passwords in a form only it
   can read, and the module copies that entry's stored password onto the entries it creates.
+  The first push takes the "ScanRelay" entry off the printer again.
 scan:
   protocols: [smb]
   smb_versions: ["2.0", "3.0"]      # confirm per model
@@ -26,7 +27,7 @@ address_book:
   max_entries: null                 # not known yet
   one_touch: false
 prerequisites: []
-tested_firmware: []                 # not yet pushed to a real printer through the app
+tested_firmware: ["10.05"]          # MF642C main controller; read and load run with tools/CanonProbe
 options:
   secure: "true"                    # false talks plain HTTP
   template_name: "ScanRelay"

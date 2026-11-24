@@ -41,7 +41,7 @@ public sealed class CanonProbeTests : IAsyncLifetime
         Assert.Equal(exports, _printer.Exports);
         var added = Assert.Single(_printer.Entries, e => e.Name == "Someone");
         Assert.Equal(("the-share-password", "scanrelay-printer"), (added.Password, added.UserName));
-        Assert.Equal(before, _printer.Entries.Where(e => e.Name != "Someone"));
+        Assert.Equal(before.Where(e => e.Name != "ScanRelay"), _printer.Entries.Where(e => e.Name != "Someone"));
 
         Assert.Equal(0, await RunAsync("--restore"));
         Assert.Equal(before, _printer.Entries);

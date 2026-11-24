@@ -22,6 +22,7 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
     /// <summary>The names the read address book and its file password are stored under with the printer.</summary>
     public const string CapturedBook = "captured_book";
     public const string CapturedPassword = "captured_file_password";
+    public const string CapturedTemplate = "captured_template";
 
     /// <summary>What each printer was last loaded with, so a push can count its changes without reading the printer.</summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Dictionary<string, CanonEntry>> LastLoaded = new();
@@ -71,7 +72,8 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
         "First make one shared folder entry on the printer by hand, named exactly \"ScanRelay\", pointing at the ScanRelay share with the printer account and its password "
         + "from Settings, Printer account. Then enter the System Manager ID and PIN below and press the button. ScanRelay keeps a copy of the address book, with the password "
         + "in the form only the printer can read, and builds every later push from that copy: the entries in it that are not ScanRelay's own go back as they were, and an entry "
-        + "added at the printer afterwards is lost at the next push unless you read again. The printer will not take a load for a few minutes after a read.";
+        + "added at the printer afterwards is lost at the next push unless you read again. The \"ScanRelay\" entry itself is taken off the printer by the first push; its stored "
+        + "password stays with ScanRelay, so it does not need making again unless the share password changes. The printer will not take a load for a few minutes after a read.";
 
     /// <summary>
     /// Reads the whole address book once. The printer refuses a load for some minutes after an export,
@@ -84,16 +86,28 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
         {
             return await WithSessionAsync(device, async ui =>
             {
-                var filePassword = NewFilePassword();
+                // The same file password as last time, when there was one: the stored password of a template
+                // read earlier can only be loaded back under the file password it was exported with.
+                var earlier = StoredTemplate(device);
+                var filePassword = earlier is not null && device.Options.GetValueOrDefault(CapturedPassword) is { Length: > 0 } kept ? kept : NewFilePassword();
                 var bytes = await ui.ExportAddressBookAsync(filePassword, Pin(device), cancellationToken);
                 var book = DcmFile.Read(bytes).AddressBook();
-                if (Template(book, device) is not { } template) return new PrepareResult(false, none, NoTemplate(device));
-                var others = book.Entries.Count(e => KeyOf(e) is null);
+
+                // The template entry is taken off the printer by the first push. After that it is no longer
+                // in what the printer exports, and the one read before is kept.
+                var onPrinter = Template(book, device);
+                var template = onPrinter is not null ? (onPrinter.UserName, onPrinter.EncryptedPassword) : earlier;
+                if (template is null) return new PrepareResult(false, none, NoTemplate(device));
+                var others = book.Entries.Count(e => KeyOf(e) is null && !ReferenceEquals(e, onPrinter));
                 return new PrepareResult(true, new Dictionary<string, string>
                 {
                     [CapturedBook] = Convert.ToBase64String(bytes),
                     [CapturedPassword] = filePassword,
-                }, $"Read {book.Entries.Count} entries from the printer. Found \"{template.Name}\" with a stored password for {template.UserName}. "
+                    [CapturedTemplate] = template.Value.UserName + "\n" + template.Value.EncryptedPassword,
+                }, $"Read {book.Entries.Count} entries from the printer. "
+                    + (onPrinter is not null
+                        ? $"Found \"{onPrinter.Name}\" with a stored password for {template.Value.UserName}; the first push takes that entry off the printer, and ScanRelay keeps its stored password. "
+                        : $"\"{TemplateName(device)}\" is no longer on the printer, so the stored password for {template.Value.UserName} read earlier is kept. ")
                     + $"{others} entries that are not ScanRelay's will be sent back as they are with every push.");
             }, cancellationToken);
         }
@@ -115,7 +129,12 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
 
             var file = DcmFile.Read(Convert.FromBase64String(captured));
             var book = file.AddressBook();
-            if (Template(book, device) is not { } template) return new ApplyResult(false, 0, 0, 0, NoTemplate(device));
+            var onPrinter = Template(book, device);
+            var known = StoredTemplate(device) ?? (onPrinter is not null ? (onPrinter.UserName, onPrinter.EncryptedPassword) : null);
+            if (known is not { } template) return new ApplyResult(false, 0, 0, 0, NoTemplate(device));
+
+            // The template entry was only there to be read. It does not go back onto the printer.
+            if (onPrinter is not null) book.Entries.Remove(onPrinter);
 
             var wantedByKey = new Dictionary<string, CanonEntry>(StringComparer.OrdinalIgnoreCase);
             foreach (var w in wanted)
@@ -167,6 +186,10 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
 
         return Task.FromResult(new ImportFile("canon-address-book.csv", "text/csv", Encoding.UTF8.GetBytes(csv.ToString())));
     }
+
+    /// <summary>The template's user name and stored password as kept from a read, or null when none is kept.</summary>
+    private static (string UserName, string EncryptedPassword)? StoredTemplate(Device device) =>
+        device.Options.GetValueOrDefault(CapturedTemplate)?.Split('\n', 2) is { Length: 2 } parts && parts[1].Length > 0 ? (parts[0], parts[1]) : null;
 
     private static CanonEntry? Template(CanonBook book, Device device) =>
         book.Entries.FirstOrDefault(e => e.IsFolder && e.EncryptedPassword.Length > 0 && e.Name.Equals(Cut(TemplateName(device)), StringComparison.OrdinalIgnoreCase));
