@@ -56,3 +56,5 @@ package-lock.json
 kyocera-probe-report.txt
 kyocera-write-test-report.txt
 canon-probe-report.txt
+canon-probe-saved.dcm
+canon-probe-saved.key
