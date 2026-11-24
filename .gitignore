@@ -29,6 +29,8 @@ coverage*/
 *.p12
 *.key
 *.pem
+# The one exception: the public half of the module signing key, which the app is built to trust
+!/catalog/signing-key.pub.pem
 .env
 .env.*
 appsettings.*.local.json
