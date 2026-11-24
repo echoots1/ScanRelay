@@ -132,7 +132,7 @@
         </div>
         <h3>Values from the module</h3>
         <p class="hint">Change these only if this printer differs.</p>
-        @foreach (var key in _form.Options.Keys.Order().ToList())
+        @foreach (var key in _form.Options.Keys.Where(k => !_form.Stored.ContainsKey(k)).Order().ToList())
         {
             <div class="field"><label for="opt-@key">@key.Replace('_', ' ')</label>
                 @if (key == "protocol" && data is not null)
@@ -157,6 +157,15 @@
         <div class="field"><label for="p-user">User name</label><input id="p-user" type="text" @bind="_form.AdminUser" autocomplete="off" /></div>
         <div class="field"><label for="p-pass">Password</label><input id="p-pass" type="password" @bind="_form.AdminPassword" autocomplete="new-password" placeholder="@(_form.HasPassword ? "Stored. Leave empty to keep it." : "")" />
             <div class="hint">Stored encrypted on the server and never shown again.</div></div>
+        @if (PrinterService.Preparer(_form.ModuleId) is { } preparer)
+        {
+            <h3>Read from the printer</h3>
+            <p class="hint">@preparer.PrepareHint</p>
+            <div class="toolbar">
+                <button disabled="@Busy" @onclick="PrepareAsync">@preparer.PrepareLabel</button>
+                <span class="muted">@(_form.Stored.Count == 0 ? "Not read yet." : _form.Read ? "Read just now. Save to keep it." : "Read before and stored. Read again after changing the printer's address book by hand.")</span>
+            </div>
+        }
         <GroupPicker Label="This printer's own group (optional)" AllowNone="true" GroupId="_form.GroupId" GroupName="@_form.GroupName"
                      Hint="Leave empty and this printer lists everyone in the default sync group. Choose a group and it lists that group's members instead: the default group is left out for this printer. People added by hand to every printer are still included. Takes effect at the next sync."
                      Changed="g => { _form.GroupId = g?.Id; _form.GroupName = g?.DisplayName; }" />
@@ -187,6 +196,10 @@
         public Guid? GroupId;
         public string? GroupName;
         public Dictionary<string, string> Options = [];
+
+        /// <summary>What the module read from the printer, encrypted. Kept as it is and never shown.</summary>
+        public Dictionary<string, string> Stored = [];
+        public bool Read;
     }
 
     private List<Row> _printers = [];
@@ -236,12 +249,42 @@
             GroupName = p.SyncGroupId is null ? null : p.SyncGroupName ?? "Chosen group",
         };
         if (Modules.Find(p.ModuleId)?.Data is { } data) _form.Options = PrinterService.EffectiveOptions(p, data);
+        _form.Stored = _form.Options.Where(o => o.Value.StartsWith(PrinterService.ProtectedPrefix, StringComparison.Ordinal)).ToDictionary(o => o.Key, o => o.Value);
     }
+
+    private Task PrepareAsync() => DoAsync(async () =>
+    {
+        var f = _form!;
+        if (string.IsNullOrWhiteSpace(f.Address)) return "Enter the printer's address first.";
+        Printer? saved = null;
+        if (f.Id != 0)
+        {
+            await using var db = await Db.CreateDbContextAsync();
+            saved = await db.Printers.AsNoTracking().FirstOrDefaultAsync(p => p.Id == f.Id);
+        }
+
+        // The form as it stands, saved or not, with the stored password when none was typed.
+        var printer = new Printer
+        {
+            Name = f.Name, Address = f.Address.Trim(), ModuleId = f.ModuleId,
+            AdminUser = string.IsNullOrWhiteSpace(f.AdminUser) ? null : f.AdminUser.Trim(),
+            AdminPasswordProtected = saved?.AdminPasswordProtected,
+            OptionsJson = System.Text.Json.JsonSerializer.Serialize(f.Options),
+        };
+        var result = await PrinterService.PrepareAsync(printer, f.AdminPassword);
+        if (!result.Succeeded) return result.Message ?? "The printer could not be read.";
+        f.Stored = new(result.Values);
+        f.Read = true;
+        Notice = result.Message + " Save to keep it.";
+        return null;
+    }, null);
 
     private void ModuleChanged()
     {
         if (_form is null || Modules.Find(_form.ModuleId)?.Data is not { } data) return;
         _form.Options = PrinterService.EffectiveOptions(new Printer { Name = "", Address = "", ModuleId = data.Id }, data);
+        _form.Stored = [];
+        _form.Read = false;
     }
 
     private Task SaveAsync() => DoAsync(
@@ -261,7 +304,8 @@
 
             // Only values that differ from the module's own are stored, so a module update can change a default.
             var defaults = PrinterService.EffectiveOptions(new Printer { Name = "", Address = "", ModuleId = f.ModuleId }, module.Data!);
-            var overrides = f.Options.Where(o => !defaults.TryGetValue(o.Key, out var d) || d != o.Value).ToDictionary(o => o.Key, o => o.Value);
+            var overrides = f.Options.Where(o => !f.Stored.ContainsKey(o.Key) && (!defaults.TryGetValue(o.Key, out var d) || d != o.Value)).ToDictionary(o => o.Key, o => o.Value);
+            foreach (var (key, value) in f.Stored) overrides[key] = value;
             printer.Name = f.Name.Trim();
             printer.Address = f.Address.Trim();
             printer.Model = f.Model.Trim();
@@ -274,6 +318,7 @@
             await db.SaveChangesAsync();
             await Audit.WriteAsync(Actor, f.Id == 0 ? "Printer added" : "Printer changed", printer.Name,
                 $"{printer.Address}, module {printer.ModuleId}, {(printer.SyncGroupId is null ? "default sync group" : "own group " + printer.SyncGroupName)}");
+            if (f.Read) await Audit.WriteAsync(Actor, "Printer read for its module", printer.Name);
             _form = null;
             _adding = false;
             return null;

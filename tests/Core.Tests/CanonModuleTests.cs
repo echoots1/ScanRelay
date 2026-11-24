@@ -18,14 +18,25 @@ public sealed class CanonModuleTests : IAsyncLifetime
         _printer.Entries.Add(new CanonMockEntry("ScanRelay", "scanserver", "Scans$", "scanrelay-printer", SharePassword));
         _adapter = new CanonAdapter(new ModuleContext("canon-imageclass", new HttpClient(), _log.Add))
         {
-            UiFactory = d => new CanonRemoteUi(d.Address) { PollEvery = TimeSpan.FromMilliseconds(5) },
+            UiFactory = d => new CanonRemoteUi(d.Address) { PollEvery = TimeSpan.FromMilliseconds(5), BusyRetryEvery = TimeSpan.FromMilliseconds(20), WaitWhileBusy = TimeSpan.FromSeconds(2) },
         };
+        Assert.True((await ReadAsync()).Succeeded);
     }
 
     public async Task DisposeAsync() => await _printer.DisposeAsync();
 
+    /// <summary>What "Read the address book from the printer" stored, as the service hands it back.</summary>
+    private Dictionary<string, string> _read = [];
+
     private Device Device(string? pin = null, Dictionary<string, string>? options = null) =>
-        new(_printer.Address, _printer.ManagerId, pin ?? _printer.ManagerPin, options ?? []);
+        new(_printer.Address, _printer.ManagerId, pin ?? _printer.ManagerPin, new Dictionary<string, string>([.. _read, .. options ?? []]));
+
+    private async Task<PrepareResult> ReadAsync(Dictionary<string, string>? options = null)
+    {
+        var result = await _adapter.PrepareAsync(Device(options: options));
+        if (result.Succeeded) _read = new(result.Values);
+        return result;
+    }
 
     private static Entry Person(Guid id, string name) =>
         new(id.ToString(), name, new ScanDestination(ScanProtocol.Smb, "scanserver", $"Scans$\\{id}", "scanserver\\scanrelay-printer", "ignored-here"), "someone@example.com");
@@ -125,29 +136,93 @@ public sealed class CanonModuleTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_new_share_password_typed_into_the_template_reaches_everyone_at_the_next_push()
+    public async Task A_new_share_password_typed_into_the_template_reaches_everyone_once_the_printer_is_read_again()
     {
         var list = new[] { Person(Guid.NewGuid(), "Ann"), Person(Guid.NewGuid(), "Bob") };
         await _adapter.ApplyAsync(Device(), list);
         var index = _printer.Entries.FindIndex(e => e.Name == "ScanRelay");
         _printer.Entries[index] = _printer.Entries[index] with { Password = "a-new-password" };
+        Assert.True((await ReadAsync()).Succeeded);
 
         var result = await _adapter.ApplyAsync(Device(), list);
 
-        Assert.Equal(2, result.Updated);
+        Assert.True(result.Succeeded, result.Error);
         Assert.All(Ours, e => Assert.Equal("a-new-password", e.Password));
     }
 
     [Fact]
-    public async Task Without_the_template_entry_nothing_is_changed_and_the_reason_says_what_to_do()
+    public async Task Reading_says_what_was_found_and_changes_nothing_on_the_printer()
+    {
+        var before = _printer.Entries.ToList();
+
+        var result = await ReadAsync();
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("Found \"ScanRelay\" with a stored password for scanrelay-printer", result.Message);
+        Assert.Equal(before, _printer.Entries);
+        Assert.Equal(0, _printer.Imports);
+        Assert.Equal([CanonAdapter.CapturedBook, CanonAdapter.CapturedPassword], result.Values.Keys.Order());
+    }
+
+    [Fact]
+    public async Task Without_the_template_entry_reading_fails_and_the_reason_says_what_to_do()
     {
         _printer.Entries.RemoveAll(e => e.Name == "ScanRelay");
+
+        var result = await _adapter.PrepareAsync(Device());
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(result.Values);
+        Assert.Contains("Make one on the printer by hand", result.Message);
+    }
+
+    [Fact]
+    public async Task A_push_before_the_printer_has_been_read_changes_nothing_and_says_what_to_do()
+    {
+        _read = [];
 
         var result = await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann")]);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("Make one on the printer by hand", result.Error);
+        Assert.Contains("Read the address book from the printer", result.Error);
         Assert.Equal(0, _printer.Imports);
+    }
+
+    [Fact]
+    public async Task A_push_never_exports_so_the_printer_is_not_busy_when_the_load_starts()
+    {
+        var exports = _printer.Exports;
+
+        await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann")]);
+        await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Bob")]);
+
+        Assert.Equal(exports, _printer.Exports);
+        Assert.Equal(2, _printer.Imports);
+    }
+
+    [Fact]
+    public async Task A_load_right_after_a_read_waits_until_the_printer_stops_being_busy()
+    {
+        _printer.BusyAfterExport = TimeSpan.FromMilliseconds(300);
+        Assert.True((await ReadAsync()).Succeeded);
+
+        var result = await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann")]);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Single(Ours);
+    }
+
+    [Fact]
+    public async Task A_printer_that_stays_busy_is_reported_with_its_own_reason()
+    {
+        _printer.BusyAfterExport = TimeSpan.FromMinutes(5);
+        Assert.True((await ReadAsync()).Succeeded);
+
+        var result = await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann")]);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("an export is still being performed", result.Error);
+        Assert.Empty(Ours);
     }
 
     [Fact]
@@ -155,8 +230,10 @@ public sealed class CanonModuleTests : IAsyncLifetime
     {
         var index = _printer.Entries.FindIndex(e => e.Name == "ScanRelay");
         _printer.Entries[index] = _printer.Entries[index] with { Name = "Scan account" };
+        var options = new Dictionary<string, string> { ["template_name"] = "Scan account" };
+        Assert.True((await ReadAsync(options)).Succeeded);
 
-        var result = await _adapter.ApplyAsync(Device(options: new() { ["template_name"] = "Scan account" }), [Person(Guid.NewGuid(), "Ann")]);
+        var result = await _adapter.ApplyAsync(Device(options: options), [Person(Guid.NewGuid(), "Ann")]);
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Equal(SharePassword, Assert.Single(Ours).Password);
@@ -188,18 +265,6 @@ public sealed class CanonModuleTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_printer_that_does_not_keep_everything_is_reported()
-    {
-        _printer.Capacity = 5;
-        var list = Enumerable.Range(1, 10).Select(i => Person(Guid.NewGuid(), $"Person {i:00}")).ToList();
-
-        var result = await _adapter.ApplyAsync(Device(), list);
-
-        Assert.False(result.Succeeded);
-        Assert.Contains("did not keep it as sent", result.Error);
-    }
-
-    [Fact]
     public async Task A_printer_with_an_address_book_pin_needs_it_in_the_printers_settings()
     {
         _printer.AddressBookPin = "4321";
@@ -215,11 +280,11 @@ public sealed class CanonModuleTests : IAsyncLifetime
     [Fact]
     public async Task Missing_sign_in_details_or_a_printer_that_is_off_are_reported_not_thrown()
     {
-        var noSignIn = await _adapter.ApplyAsync(new Device(_printer.Address, null, null, new Dictionary<string, string>()), []);
+        var noSignIn = await _adapter.ApplyAsync(new Device(_printer.Address, null, null, _read), [Person(Guid.NewGuid(), "Ann")]);
         Assert.Contains("System Manager ID and PIN", noSignIn.Error);
 
         await _printer.DisposeAsync();
-        var off = await _adapter.ApplyAsync(Device(), []);
+        var off = await _adapter.ApplyAsync(Device(), [Person(Guid.NewGuid(), "Ann")]);
         Assert.False(off.Succeeded);
         Assert.Contains("Could not reach the printer's Remote UI", off.Error);
         _printer = await MockCanon.StartAsync();

@@ -82,6 +82,15 @@ public interface IDeviceAdapter
 The class takes a `ModuleContext` in its constructor, or nothing. The context
 gives it a shared `HttpClient` and a `Log` method.
 
+A module that has to read something from the printer once before it can push
+also implements `IPreparesDevice`: a label, a hint, and `PrepareAsync`, which
+returns values to keep. The Printers page shows a button for it. The service
+stores the values encrypted with the printer, never shows them, and hands them
+back in `Device.Options` on every later call. The Canon module uses this to
+read the address book, because its printers refuse a load for some minutes
+after an export. `PrepareAsync` must not change anything on the printer. A
+module that uses it needs `app_versions.min` of 0.2.3 or later.
+
 Three rules:
 
 1. **`ApplyAsync` makes the printer's managed entries equal to `wanted`.** It

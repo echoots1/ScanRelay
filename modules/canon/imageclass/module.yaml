@@ -1,5 +1,5 @@
 id: canon-imageclass
-version: 0.1.0
+version: 0.2.0
 vendor: Canon
 family: imageCLASS MF
 models: [MF642C, MF643C, MF644C]    # the MF642C/643C/644C share one Remote UI
@@ -7,16 +7,17 @@ windows_names: ["Canon MF642C*", "Canon MF643C*", "Canon MF644C*", "Canon MF640C
 status: official
 sdk_version: 1
 app_versions:
-  min: 0.2.0
+  min: 0.2.3
 adapter: ScanRelay.Modules.CanonImageClass.dll
 unofficial: true
 method: >-
-  Signs in to the printer's Remote UI as System Manager, exports the address book, changes
-  ScanRelay's own entries and loads it back. Canon does not document this, and a firmware
-  update can change the pages it relies on. Before the first push, make one shared folder
-  entry on the printer by hand, named exactly "ScanRelay", with the printer account and
-  its password: the printer stores passwords in a form only it can read, and the module
-  copies that entry's stored password onto the entries it creates.
+  Signs in to the printer's Remote UI as System Manager and loads a whole address book onto
+  it. Canon does not document this, and a firmware update can change the pages it relies on.
+  The printer refuses a load for some minutes after an export, so the address book is read
+  once, with the button on the Printers page, and every push is built from that copy. Before
+  reading, make one shared folder entry on the printer by hand, named exactly "ScanRelay",
+  with the printer account and its password: the printer stores passwords in a form only it
+  can read, and the module copies that entry's stored password onto the entries it creates.
 scan:
   protocols: [smb]
   smb_versions: ["2.0", "3.0"]      # confirm per model

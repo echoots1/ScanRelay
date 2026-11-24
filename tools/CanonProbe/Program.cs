@@ -65,7 +65,17 @@ public static partial class CanonProbeProgram
             Console.WriteLine(line);
         }
 
-        using var ui = new CanonRemoteUi(args[0], secure: !args.Contains("--plain")) { Trace = report.WriteLine };
+        var told = false;
+        using var ui = new CanonRemoteUi(args[0], secure: !args.Contains("--plain"))
+        {
+            Trace = report.WriteLine,
+            WaitWhileBusy = TimeSpan.FromMinutes(15),
+            Waiting = () =>
+            {
+                if (!told) Console.WriteLine("The printer will not take a load yet, as happens for a few minutes after an export. Waiting and asking again every 15 seconds, for up to 15 minutes.");
+                told = true;
+            },
+        };
         var ok = false;
         try
         {
@@ -108,7 +118,18 @@ public static partial class CanonProbeProgram
                     await ui.ImportAddressBookAsync(exported.Write(), filePassword, Option("--book-pin"), default);
                     Say("The printer says the load finished. Reading the address book back to check.");
 
-                    var after = DcmFile.Read(await ui.ExportAddressBookAsync(filePassword, Option("--book-pin"), default)).AddressBook();
+                    CanonBook after;
+                    try
+                    {
+                        after = DcmFile.Read(await ui.ExportAddressBookAsync(filePassword, Option("--book-pin"), default)).AddressBook();
+                    }
+                    catch (CanonException e)
+                    {
+                        Say("The load went through, but the printer would not be read back straight after: " + e.Message);
+                        Say("Look at the address book in the Remote UI or at the panel to see the result.");
+                        return 1;
+                    }
+
                     Describe(after, template, Say);
                     var present = after.Entries.Any(e => e.Name.Equals(Cut(add ?? remove!), StringComparison.OrdinalIgnoreCase));
                     var untouched = before.SequenceEqual(Others(after, add ?? remove!));

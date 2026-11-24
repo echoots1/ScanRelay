@@ -45,6 +45,10 @@ public sealed partial class MockCanon : IAsyncDisposable
     public string ManagerPin { get; set; } = "1357246";
     public string? AddressBookPin { get; set; }
     public int Capacity { get; set; } = 300;
+
+    /// <summary>The real printer refuses a load for some minutes after an export.</summary>
+    public TimeSpan BusyAfterExport { get; set; }
+    private DateTime _lastExport;
     public int Imports;
     public int Exports;
     public int Port { get; private set; }
@@ -197,6 +201,7 @@ public sealed partial class MockCanon : IAsyncDisposable
                 }
 
                 Interlocked.Increment(ref Exports);
+                _lastExport = DateTime.UtcNow;
                 context.Response.ContentType = "application/octet-stream";
                 context.Response.Headers.ContentDisposition = "attachment; filename=\"compact.dcm\"";
                 await context.Response.Body.WriteAsync(BuildExport(_exportPassword));
@@ -225,6 +230,12 @@ public sealed partial class MockCanon : IAsyncDisposable
                 if (AddressBookPin is not null && form["i2092"] != AddressBookPin)
                 {
                     await Json("{\"status\":0,\"redirect\":\"/m_import_dev_mng_import.html?err=1\"}");
+                    return;
+                }
+
+                if (DateTime.UtcNow - _lastExport < BusyAfterExport)
+                {
+                    await Json("{\"status\":0,\"redirect\":\"/m_import_dev_mng_import.html?err=3\"}");
                     return;
                 }
 

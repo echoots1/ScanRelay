@@ -123,6 +123,31 @@ public sealed class PrinterService(
         }
     }
 
+    /// <summary>Marks a stored value that a module read from the printer. These are kept encrypted and never shown.</summary>
+    public const string ProtectedPrefix = "protected:";
+
+    /// <summary>The module's one-time read from the printer, when it has one. Null when it has none.</summary>
+    public IPreparesDevice? Preparer(string moduleId) => modules.Find(moduleId) is { Usable: true } m ? m.Adapter as IPreparesDevice : null;
+
+    /// <summary>
+    /// Runs the module's one-time read against a printer as the form describes it, saved or not.
+    /// The values that come back are already encrypted, ready to be stored with the printer.
+    /// </summary>
+    public async Task<PrepareResult> PrepareAsync(Printer printer, string? adminPassword, CancellationToken ct = default)
+    {
+        var (module, problem) = Resolve(printer);
+        if (module is null) return new PrepareResult(false, new Dictionary<string, string>(), problem);
+        if (module.Adapter is not IPreparesDevice preparer) return new PrepareResult(false, new Dictionary<string, string>(), "This module has nothing to read from the printer.");
+        var device = ToDevice(printer, module);
+        if (!string.IsNullOrEmpty(adminPassword)) device = device with { AdminPassword = adminPassword };
+        var result = await GuardAsync(
+            token => preparer.PrepareAsync(device, token),
+            e => new PrepareResult(false, new Dictionary<string, string>(), e),
+            ct);
+        if (!result.Succeeded) return result;
+        return result with { Values = result.Values.ToDictionary(v => v.Key, v => ProtectedPrefix + protector.Protect(v.Value)) };
+    }
+
     /// <summary>The printer's settings: the module's defaults with this printer's own values on top.</summary>
     public static Dictionary<string, string> EffectiveOptions(Printer printer, ModuleData data)
     {
@@ -157,7 +182,25 @@ public sealed class PrinterService(
         printer.Address,
         printer.AdminUser,
         printer.AdminPasswordProtected is { } p ? protector.UnprotectBytes(p) : null,
-        EffectiveOptions(printer, module.Data!));
+        Unprotected(EffectiveOptions(printer, module.Data!)));
+
+    private Dictionary<string, string> Unprotected(Dictionary<string, string> options)
+    {
+        foreach (var (key, value) in options.Where(o => o.Value.StartsWith(ProtectedPrefix, StringComparison.Ordinal)).ToList())
+        {
+            try
+            {
+                options[key] = protector.Unprotect(value[ProtectedPrefix.Length..]);
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                // The keys it was stored under are gone, as after moving the data folder. The module asks for it to be read again.
+                options.Remove(key);
+            }
+        }
+
+        return options;
+    }
 
     private List<Entry> ToEntries(Printer printer, LoadedModule module, IReadOnlyList<WantedEntry> wanted)
     {

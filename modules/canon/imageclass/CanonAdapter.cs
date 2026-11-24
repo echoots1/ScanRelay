@@ -8,16 +8,24 @@ namespace ScanRelay.Modules.CanonImageClass;
 /// <summary>
 /// Keeps a Canon imageCLASS address book in step with the list of people.
 ///
-/// The printer only takes its address book whole, so each change is: export it, change
-/// ScanRelay's own entries, load everything back. An entry is ours when it is a shared
-/// folder whose path ends in a person's id. Every other entry goes back exactly as it came.
+/// The printer only takes its address book whole, and refuses a load for some minutes after
+/// an export. So the book is read once, from the Printers page, and kept. Each push is that
+/// copy with ScanRelay's own entries replaced, loaded back. An entry is ours when it is a
+/// shared folder whose path ends in a person's id. Every other entry goes back as it was read.
 ///
 /// The printer stores folder passwords in a form only it can read. The module never sees
 /// the share password in a usable form here; it copies the stored password of one entry
 /// that IT made by hand, the template, onto the entries it creates.
 /// </summary>
-public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
+public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter, IPreparesDevice
 {
+    /// <summary>The names the read address book and its file password are stored under with the printer.</summary>
+    public const string CapturedBook = "captured_book";
+    public const string CapturedPassword = "captured_file_password";
+
+    /// <summary>What each printer was last loaded with, so a push can count its changes without reading the printer.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Dictionary<string, CanonEntry>> LastLoaded = new();
+
     public string Id => "canon-imageclass";
 
     /// <summary>Lets tests replace the connection to the printer.</summary>
@@ -57,62 +65,87 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
                 .Select(x => new Entry(x.Key!, x.Entry.Name, new ScanDestination(ScanProtocol.Smb, x.Entry.Host, x.Entry.Path, x.Entry.UserName, "")))];
         }, cancellationToken);
 
-    public async Task<ApplyResult> ApplyAsync(Device device, IReadOnlyList<Entry> wanted, CancellationToken cancellationToken = default)
+    public string PrepareLabel => "Read the address book from the printer";
+
+    public string PrepareHint =>
+        "First make one shared folder entry on the printer by hand, named exactly \"ScanRelay\", pointing at the ScanRelay share with the printer account and its password "
+        + "from Settings, Printer account. Then enter the System Manager ID and PIN below and press the button. ScanRelay keeps a copy of the address book, with the password "
+        + "in the form only the printer can read, and builds every later push from that copy: the entries in it that are not ScanRelay's own go back as they were, and an entry "
+        + "added at the printer afterwards is lost at the next push unless you read again. The printer will not take a load for a few minutes after a read.";
+
+    /// <summary>
+    /// Reads the whole address book once. The printer refuses a load for some minutes after an export,
+    /// so a push cannot begin with one; it is built from this copy instead.
+    /// </summary>
+    public async Task<PrepareResult> PrepareAsync(Device device, CancellationToken cancellationToken = default)
     {
+        var none = new Dictionary<string, string>();
         try
         {
             return await WithSessionAsync(device, async ui =>
             {
                 var filePassword = NewFilePassword();
-                var file = DcmFile.Read(await ui.ExportAddressBookAsync(filePassword, Pin(device), cancellationToken));
-                var book = file.AddressBook();
-                var templateName = device.Options.GetValueOrDefault("template_name") is { Length: > 0 } n ? n : "ScanRelay";
-                var template = book.Entries.FirstOrDefault(e => e.IsFolder && e.Name.Equals(Cut(templateName), StringComparison.OrdinalIgnoreCase));
-                if (template is null || template.EncryptedPassword.Length == 0)
+                var bytes = await ui.ExportAddressBookAsync(filePassword, Pin(device), cancellationToken);
+                var book = DcmFile.Read(bytes).AddressBook();
+                if (Template(book, device) is not { } template) return new PrepareResult(false, none, NoTemplate(device));
+                var others = book.Entries.Count(e => KeyOf(e) is null);
+                return new PrepareResult(true, new Dictionary<string, string>
                 {
-                    return new ApplyResult(false, 0, 0, 0,
-                        $"The printer has no shared folder entry called \"{templateName}\" with a password. Make one on the printer by hand, pointing at the ScanRelay share, "
-                        + "with the printer account and its password from Settings, Printer account. The module copies that entry's stored password onto the entries it creates.");
-                }
+                    [CapturedBook] = Convert.ToBase64String(bytes),
+                    [CapturedPassword] = filePassword,
+                }, $"Read {book.Entries.Count} entries from the printer. Found \"{template.Name}\" with a stored password for {template.UserName}. "
+                    + $"{others} entries that are not ScanRelay's will be sent back as they are with every push.");
+            }, cancellationToken);
+        }
+        catch (Exception e) when (IsExpected(e))
+        {
+            return new PrepareResult(false, none, Explain(e));
+        }
+    }
 
-                var ours = book.Entries.Where(e => KeyOf(e) is not null).ToList();
-                var wantedByKey = new Dictionary<string, CanonEntry>(StringComparer.OrdinalIgnoreCase);
-                foreach (var w in wanted)
-                {
-                    wantedByKey[w.Key] = CanonEntry.Folder(0, Cut(w.DisplayName.Trim()), w.Destination.Host, w.Destination.Path, template.UserName, template.EncryptedPassword);
-                }
+    public async Task<ApplyResult> ApplyAsync(Device device, IReadOnlyList<Entry> wanted, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (device.Options.GetValueOrDefault(CapturedBook) is not { Length: > 0 } captured || device.Options.GetValueOrDefault(CapturedPassword) is not { Length: > 0 } filePassword)
+            {
+                return new ApplyResult(false, 0, 0, 0,
+                    "The printer's address book has not been read yet. Open this printer under Printers, press \"Read the address book from the printer\" and save.");
+            }
 
-                int added = 0, updated = 0, removed = 0;
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var existing in ours)
-                {
-                    var key = KeyOf(existing)!;
-                    if (!wantedByKey.TryGetValue(key, out var target) || !seen.Add(key)) removed++;
-                    else if (!Same(existing, target)) updated++;
-                }
+            var file = DcmFile.Read(Convert.FromBase64String(captured));
+            var book = file.AddressBook();
+            if (Template(book, device) is not { } template) return new ApplyResult(false, 0, 0, 0, NoTemplate(device));
 
-                added = wantedByKey.Keys.Count(k => !seen.Contains(k));
-                if (added + updated + removed == 0) return new ApplyResult(true, 0, 0, 0, null);
+            var wantedByKey = new Dictionary<string, CanonEntry>(StringComparer.OrdinalIgnoreCase);
+            foreach (var w in wanted)
+            {
+                wantedByKey[w.Key] = CanonEntry.Folder(0, Cut(w.DisplayName.Trim()), w.Destination.Host, w.Destination.Path, template.UserName, template.EncryptedPassword);
+            }
 
-                // Everything that is not ours first, in the order it was. Then ours, by name.
-                book.Entries.RemoveAll(e => KeyOf(e) is not null);
-                book.Entries.AddRange(wantedByKey.Values.OrderBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase));
-                book.Renumber();
-                file.SetAddressBook(book);
-                await ui.ImportAddressBookAsync(file.Write(), filePassword, Pin(device), cancellationToken);
+            // What the printer holds now: what this process last loaded, or else what was read from it.
+            var state = device.Address + "|" + captured.GetHashCode();
+            var held = LastLoaded.TryGetValue(state, out var last)
+                ? last
+                : book.Entries.Where(e => KeyOf(e) is not null).GroupBy(e => KeyOf(e)!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            var added = wantedByKey.Keys.Count(k => !held.ContainsKey(k));
+            var removed = held.Keys.Count(k => !wantedByKey.ContainsKey(k));
+            var updated = wantedByKey.Count(w => held.TryGetValue(w.Key, out var now) && !Same(now, w.Value));
+            if (added + updated + removed == 0) return new ApplyResult(true, 0, 0, 0, null);
 
-                // The printer's own "finished" says little. Read the book back and see for ourselves.
-                var after = DcmFile.Read(await ui.ExportAddressBookAsync(filePassword, Pin(device), cancellationToken)).AddressBook();
-                var kept = after.Entries.Select(KeyOf).Where(k => k is not null).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                if (!kept.SetEquals(wantedByKey.Keys))
-                {
-                    var missing = wantedByKey.Keys.Count(k => !kept.Contains(k));
-                    return new ApplyResult(false, 0, 0, 0,
-                        $"The printer accepted the address book but did not keep it as sent: {missing} of {wantedByKey.Count} entries are missing afterwards. Its address book may be full.");
-                }
+            // Everything that is not ours first, in the order it was. Then ours, by name.
+            book.Entries.RemoveAll(e => KeyOf(e) is not null);
+            var others = book.Entries.Count;
+            book.Entries.AddRange(wantedByKey.Values.OrderBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase));
+            book.Renumber();
+            file.SetAddressBook(book);
+            var bytes = file.Write();
 
-                var others = after.Entries.Count(e => KeyOf(e) is null);
-                context.Log($"Loaded the address book onto {device.Address}: {added} added, {updated} updated, {removed} removed. {others} other entries sent back as they were.");
+            return await WithSessionAsync(device, async ui =>
+            {
+                await ui.ImportAddressBookAsync(bytes, filePassword, Pin(device), cancellationToken);
+                LastLoaded[state] = wantedByKey;
+                context.Log($"Loaded the address book onto {device.Address}: {added} added, {updated} updated, {removed} removed. {others} other entries sent back as they were read.");
                 return new ApplyResult(true, added, updated, removed, null);
             }, cancellationToken);
         }
@@ -134,6 +167,15 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
 
         return Task.FromResult(new ImportFile("canon-address-book.csv", "text/csv", Encoding.UTF8.GetBytes(csv.ToString())));
     }
+
+    private static CanonEntry? Template(CanonBook book, Device device) =>
+        book.Entries.FirstOrDefault(e => e.IsFolder && e.EncryptedPassword.Length > 0 && e.Name.Equals(Cut(TemplateName(device)), StringComparison.OrdinalIgnoreCase));
+
+    private static string TemplateName(Device device) => device.Options.GetValueOrDefault("template_name") is { Length: > 0 } n ? n : "ScanRelay";
+
+    private static string NoTemplate(Device device) =>
+        $"The printer has no shared folder entry called \"{TemplateName(device)}\" with a password. Make one on the printer by hand, pointing at the ScanRelay share, "
+        + "with the printer account and its password from Settings, Printer account. Then read the address book from the printer again.";
 
     /// <summary>The person an entry belongs to, or null when the entry is not one of ours.</summary>
     public static string? KeyOf(CanonEntry entry) =>
@@ -172,7 +214,7 @@ public sealed partial class CanonAdapter(ModuleContext context) : IDeviceAdapter
     /// <summary>A fresh password for each export. The file never leaves this process, and is useless once the load is done.</summary>
     private static string NewFilePassword() => Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
 
-    private static bool IsExpected(Exception e) => e is CanonException or FormatException or HttpRequestException or TaskCanceledException or IOException;
+    private static bool IsExpected(Exception e) => e is CanonException or FormatException or InvalidDataException or HttpRequestException or TaskCanceledException or IOException;
 
     private static string Explain(Exception e) => e switch
     {

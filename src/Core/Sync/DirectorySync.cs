@@ -185,7 +185,7 @@ public sealed class DirectorySync(
                 if (actual is null) continue;
                 var wanted = printer.Entries.Select(e => new WantedEntry(e.PersonId, e.DisplayName, e.Email)).OrderBy(e => e.DisplayName).ToList();
                 var same = actual.Count == wanted.Count
-                    && actual.OrderBy(a => a.PersonId).SequenceEqual(wanted.OrderBy(w => w.PersonId));
+                    && actual.OrderBy(a => a.PersonId).Zip(wanted.OrderBy(w => w.PersonId)).All(pair => SameOnPrinter(pair.First, pair.Second));
                 if (same) continue;
 
                 if (run is null)
@@ -404,6 +404,15 @@ public sealed class DirectorySync(
         Changed?.Invoke();
         return outcome.Succeeded;
     }
+
+    /// <summary>
+    /// Whether what a printer holds is the entry that was pushed. Some printers cut a long name
+    /// short, and some entries hold no email address at all; neither is a difference to repair.
+    /// </summary>
+    public static bool SameOnPrinter(WantedEntry actual, WantedEntry wanted) =>
+        actual.PersonId == wanted.PersonId
+        && (actual.DisplayName == wanted.DisplayName || (actual.DisplayName.Length >= 8 && wanted.DisplayName.StartsWith(actual.DisplayName, StringComparison.Ordinal)))
+        && (actual.Email is null || string.Equals(actual.Email, wanted.Email, StringComparison.OrdinalIgnoreCase));
 
     private static PrinterChange Compare(Printer printer, List<WantedEntry> wanted)
     {

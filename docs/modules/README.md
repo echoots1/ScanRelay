@@ -8,7 +8,7 @@ added.
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
 | `kyocera-ecosys` | ECOSYS M8124cidn | **Working on a real printer.** A sync pushed the list, a scan at the panel reached OneDrive. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
-| `canon-imageclass` | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Built against a mock; not yet run against a printer.** See below. |
+| `canon-imageclass` | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Reading works on a real MF642C; loading is built against a mock and not yet run on a printer.** See below. |
 
 ## The first printers
 
@@ -124,22 +124,30 @@ Work has started with the MF642C.
 - **How the module works: reuse, not decrypt.** Every entry ScanRelay creates
   uses the same share password. IT makes one shared folder entry on the
   printer by hand, named exactly `ScanRelay`, with the printer account and its
-  password. At each push the module signs in to the Remote UI as System
-  Manager, exports the address book, copies that entry's stored password onto
-  its own entries, and loads the book back. It never needs to know how the
-  printer encrypts passwords. If the share password changes, IT retypes it in
-  that one entry and the next push spreads it.
+  password. It never needs to know how the printer encrypts passwords.
+- **The address book is read once, then every push is built from that copy.**
+  The printer refuses a load for some minutes after an export, so a push
+  cannot start with one. On the Printers page, in the printer's own form,
+  "Read the address book from the printer" signs in as System Manager, exports
+  the book and stores it encrypted with the printer; nothing is uploaded by
+  hand. A push takes that copy, replaces ScanRelay's own entries, and loads it.
+  Two things follow. An entry added at the printer after the read is lost at
+  the next push, so read again after changing the address book by hand. And if
+  the share password changes, retype it in the `ScanRelay` entry and read again.
+- **A load that is refused because the printer is busy is asked again** every
+  15 seconds for up to 3 minutes, which covers a push straight after a read
+  or after the nightly check, which also exports.
 - **Where its settings live.** On the Printers page, per printer: the System
   Manager ID and PIN go in the printer's admin sign-in boxes, and the template
   entry's name and the address book PIN, if the printer has one, are under
-  "Values from the module". Nothing needs uploading or storing: the encrypted
-  password is read fresh from the printer each time.
-- **Built and tested against a mock, not yet run against a printer.** Sign-in
-  works on a real MF642C (main controller 10.05). The export is fetched the
-  way that printer serves it: its "Exporting..." page holds a small form, and
-  the answer to that form is the file. Loading a file back follows the real
-  Import page but has not been run from the module yet. `tools/CanonProbe`
-  runs the steps against a real printer and records what it answers.
+  "Values from the module".
+- **Built and tested against a mock; the read is proven on a real printer, the
+  load is not yet.** Sign-in and export work on a real MF642C (main controller
+  10.05): its "Exporting..." page holds a small form, the answer to that form
+  is the Export page carrying a one-time address, and the file comes from that
+  address. Loading a file back follows the real Import page but has not been
+  run from the module yet. `tools/CanonProbe` runs the steps against a real
+  printer and records what it answers.
 - **A copied encrypted password is accepted, as far as can be seen.** A file
   with one entry's encrypted password copied onto a new entry loaded, and the
   printer shows a password as set on the new entry. That it is the right
@@ -147,8 +155,8 @@ Work has started with the MF642C.
   password will prove it.
 - **A load replaces the whole address book and renumbers it.** An entry left
   out of the file was gone afterwards, and the remaining entries were numbered
-  1, 2, 3 whatever the file said. So the module must read the whole book,
-  change only its own entries, send everything back, and recognise its
+  1, 2, 3 whatever the file said. So the module must send the whole book,
+  change only its own entries, and recognise its
   entries by their folder path, never by number.
 - **`modules/canon/imageclass/DcmFile.cs` reads and writes the file,** and
   writes a real export back byte for byte.

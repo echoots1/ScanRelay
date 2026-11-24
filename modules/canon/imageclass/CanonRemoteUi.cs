@@ -163,33 +163,60 @@ public sealed partial class CanonRemoteUi : IDisposable
     }
 
     /// <summary>Loads an encrypted configuration file's address book onto the printer. It replaces the whole address book.</summary>
+    /// <summary>How long a load keeps asking while the printer says it is busy, as it does for some minutes after an export.</summary>
+    public TimeSpan WaitWhileBusy { get; init; } = TimeSpan.FromMinutes(3);
+
+    public TimeSpan BusyRetryEvery { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>Called each time a load has to wait.</summary>
+    public Action? Waiting { get; init; }
+
     public async Task ImportAddressBookAsync(byte[] file, string filePassword, string? addressBookPin, CancellationToken ct)
     {
-        var (_, page, _) = await GetAsync("/m_import_dev_mng_import.html", ct);
-        var fields = new List<(string, string)>
+        // The printer refuses a load for some minutes after an export. Ask again until it agrees.
+        var until = DateTime.UtcNow + WaitWhileBusy;
+        string? uploadUrl = null;
+        while (uploadUrl is null)
         {
-            ("iToken", Token(page, "Import")),
-            ("i2052", filePassword),
-            ("i2070", "0"), ("i2070", "1"),
-            ("i2080", "0"),
-            ("i2140", "0"),
-        };
-        if (!string.IsNullOrEmpty(addressBookPin)) fields.Add(("i2092", addressBookPin));
+            var (_, page, _) = await GetAsync("/m_import_dev_mng_import.html", ct);
+            var fields = new List<(string, string)>
+            {
+                ("iToken", Token(page, "Import")),
+                ("i2052", filePassword),
+                ("i2070", "0"), ("i2070", "1"),
+                ("i2080", "0"),
+                ("i2140", "0"),
+            };
+            if (!string.IsNullOrEmpty(addressBookPin)) fields.Add(("i2092", addressBookPin));
 
-        var (status, body, _) = await PostFormAsync("/cgi/m_import_dev_mng_import.cgi", fields, ct, secret: "i2052");
-        var start = TryJson(body);
-        if (status != 200 || start is null || !start.Value.TryGetProperty("status", out var s) || s.ToString() != "0")
-        {
-            throw new CanonException("The printer would not start the import. Another import or export may be running.");
+            var (status, body, _) = await PostFormAsync("/cgi/m_import_dev_mng_import.cgi", fields, ct, secret: "i2052");
+            var start = TryJson(body);
+            string refusal;
+            if (status != 200 || start is null || !start.Value.TryGetProperty("status", out var s) || s.ToString() != "0")
+            {
+                refusal = "The printer would not start the import. Another import or export may be running.";
+            }
+            else if (start.Value.TryGetProperty("redirect", out var refused) && refused.GetString() is { Length: > 0 } back)
+            {
+                // A wrong or missing PIN, or nothing selected, will not get better by waiting.
+                if (Regex.IsMatch(back, "err=[145]")) throw new CanonException(ExplainRefusal(back, "import"));
+                refusal = ExplainRefusal(back, "import");
+            }
+            else
+            {
+                uploadUrl = start.Value.TryGetProperty("url", out var u) ? u.GetString() : null;
+                if (string.IsNullOrEmpty(uploadUrl)) throw new CanonException("The printer did not say where to send the file.");
+                break;
+            }
+
+            if (DateTime.UtcNow >= until) throw new CanonException(refusal);
+            Trace?.Invoke($"       not yet: waiting {BusyRetryEvery.TotalSeconds:0} seconds and asking again.");
+            Waiting?.Invoke();
+            await Task.Delay(BusyRetryEvery, ct);
+            using (await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct))
+            {
+            }
         }
-
-        if (start.Value.TryGetProperty("redirect", out var refused) && refused.GetString() is { Length: > 0 } back)
-        {
-            throw new CanonException(ExplainRefusal(back, "import"));
-        }
-
-        var uploadUrl = start.Value.TryGetProperty("url", out var u) ? u.GetString() : null;
-        if (string.IsNullOrEmpty(uploadUrl)) throw new CanonException("The printer did not say where to send the file.");
 
         using var upload = new MultipartFormDataContent();
         var part = new ByteArrayContent(file);
