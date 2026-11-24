@@ -111,11 +111,26 @@ Work has started with the MF642C.
 - **The folder password is not exported.** The `pwd` line comes out empty.
   Whether a file with a password in it is accepted on the way in, and in what
   form, is not known yet.
-- **Whether loading a file replaces the whole address book** is not known yet.
-  If it does, the module must export first and send back everything it found
-  plus its own entries.
-- **How to load a file without a person clicking** is not known yet. It goes
-  through the Remote UI's sign-in and import page.
+- **Loading a file is probably the wrong route on this model.** The MF642C's
+  Import page takes only an encrypted device configuration file: it insists on
+  a decryption password, has no choice of the plain address book format, and
+  says to restart the device afterwards. So the plain file it exports cannot
+  be loaded back the same way, and a route that restarts the printer at every
+  change is not acceptable anyway. This matches Canon's own warning that an
+  exported address book cannot always be imported on the same model.
+- **How the Import page works, for the record.** It posts the choices to
+  `/cgi/m_import_dev_mng_import.cgi` with a one-time token from the page, is
+  told where to send the file, sends it, then asks
+  `/json/dcm_import_result.json` until the import is done.
+- **The likely route: the Remote UI's own address book pages.** Adding,
+  changing and deleting one entry at a time through the same forms a person
+  uses, with no restart, and with the folder password typed into the form.
+  This is the "driving the web page" method the spec expected for Canon, and
+  it is unofficial. The sign-in page and the address book pages have not been
+  seen yet.
+- **Email entries are not wanted on Canon.** ScanRelay creates the shared
+  folder entry only. The setting that adds each person's email address applies
+  to printers whose entries hold both, such as Kyocera.
 
 ## Why the vendor modules were not built blind
 
