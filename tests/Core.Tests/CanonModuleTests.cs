@@ -225,6 +225,15 @@ public sealed class CanonModuleTests : IAsyncLifetime
         _printer = await MockCanon.StartAsync();
     }
 
+    [Theory]
+    [InlineData("Remote UI: Login: Somebody's Printer: MF642C/643C/644C", "Remote UI: Login: (printer name): MF642C/643C/644C")]
+    [InlineData("Remote UI: Export: Room 2: Colour: MF642C/643C/644C", "Remote UI: Export: (printer name): MF642C/643C/644C")]
+    [InlineData("Something else", "Something else")]
+    public void A_report_leaves_out_the_name_the_owner_gave_the_printer(string title, string expected)
+    {
+        Assert.Equal(expected, CanonRemoteUi.WithoutPrinterName(title));
+    }
+
     [Fact]
     public async Task The_file_for_applying_by_hand_lists_each_person_without_a_password()
     {

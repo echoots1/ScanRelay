@@ -278,6 +278,14 @@ public sealed partial class CanonRemoteUi : IDisposable
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, string? what, CancellationToken ct)
     {
         if (what is not null) Trace?.Invoke(what);
+
+        // What a browser sends along with a form. Some Remote UI firmware checks where a request came from.
+        if (request.Method == HttpMethod.Post)
+        {
+            request.Headers.Referrer ??= new Uri(_base + "/login.html");
+            request.Headers.TryAddWithoutValidation("Origin", _base);
+        }
+
         try
         {
             return await _http.SendAsync(request, ct);
@@ -290,6 +298,13 @@ public sealed partial class CanonRemoteUi : IDisposable
         {
             request.Dispose();
         }
+    }
+
+    /// <summary>A page title is "Remote UI: page: the printer's own name: models". The name is whatever its owner called it, so it is left out.</summary>
+    public static string WithoutPrinterName(string title)
+    {
+        var parts = title.Split(':').Select(p => p.Trim()).ToArray();
+        return parts.Length < 4 ? title : $"{parts[0]}: {parts[1]}: (printer name): {parts[^1]}";
     }
 
     private void Describe(HttpResponseMessage response, string body)
@@ -305,7 +320,7 @@ public sealed partial class CanonRemoteUi : IDisposable
         }
 
         // Of a page, only what matters for finding the way: its title, its links and its scripts' addresses.
-        if (TitlePattern().Match(body) is { Success: true } t) Trace("       title: " + Regex.Replace(WebUtility.HtmlDecode(t.Groups[1].Value), @":[^:]*:", ": (printer name): ", RegexOptions.None, TimeSpan.FromSeconds(1)));
+        if (TitlePattern().Match(body) is { Success: true } t) Trace("       title: " + WithoutPrinterName(WebUtility.HtmlDecode(t.Groups[1].Value)));
         var interesting = Links(body).Where(IsWorthFollowing).Distinct().Take(20).ToList();
         if (interesting.Count > 0) Trace("       points at: " + string.Join("  ", interesting));
         foreach (Match call in Regex.Matches(body, "createXMLHttpRequest\\(\"(\\w+)\",\\s*\"([^\"]+)\"")) Trace($"       script calls: {call.Groups[1].Value} {call.Groups[2].Value}");
