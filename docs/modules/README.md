@@ -127,6 +127,18 @@ Work has started with the MF642C.
   encryption works: IT types the share password into one entry by hand, once,
   and the module copies that entry's encrypted value onto the rest. Whether
   the printer accepts a copied value is the next thing to find out.
+- **A copied encrypted password is accepted, as far as can be seen.** A file
+  with one entry's encrypted password copied onto a new entry loaded, and the
+  printer shows a password as set on the new entry. That it is the right
+  password has not been proven yet; a scan to a real share with a copied
+  password will prove it.
+- **A load replaces the whole address book and renumbers it.** An entry left
+  out of the file was gone afterwards, and the remaining entries were numbered
+  1, 2, 3 whatever the file said. So the module must read the whole book,
+  change only its own entries, send everything back, and recognise its
+  entries by their folder path, never by number.
+- **`modules/canon/imageclass/DcmFile.cs` reads and writes the file,** and
+  writes a real export back byte for byte.
 - **Names are cut to 16 characters** by the printer.
 - **Whether a load replaces the whole address book or adds to it** is being
   tested alongside.
