@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>canon-probe</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\canon\imageclass\ScanRelay.Modules.CanonImageClass.csproj" />
+    <ProjectReference Include="..\..\src\ModuleSdk\ScanRelay.ModuleSdk.csproj" />
+  </ItemGroup>
+</Project>

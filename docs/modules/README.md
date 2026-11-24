@@ -8,7 +8,7 @@ added.
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
 | `kyocera-ecosys` | ECOSYS M8124cidn | **Working on a real printer.** A sync pushed the list, a scan at the panel reached OneDrive. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
-| Canon | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Started.** The address book file format is read and written. Loading it onto a printer is being worked out. See below. |
+| `canon-imageclass` | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Built against a mock; not yet run against a printer.** See below. |
 
 ## The first printers
 
@@ -121,12 +121,24 @@ Work has started with the MF642C.
   the passwords inside are encrypted, each as a hex value. How they are
   encrypted is not known, and a first look with known passwords did not match
   any common scheme.
-- **The idea being tested: reuse, not decrypt.** Every entry ScanRelay creates
-  uses the same share password. If an encrypted password value from one entry
-  is accepted when copied onto another, the module never needs to know how the
-  encryption works: IT types the share password into one entry by hand, once,
-  and the module copies that entry's encrypted value onto the rest. Whether
-  the printer accepts a copied value is the next thing to find out.
+- **How the module works: reuse, not decrypt.** Every entry ScanRelay creates
+  uses the same share password. IT makes one shared folder entry on the
+  printer by hand, named exactly `ScanRelay`, with the printer account and its
+  password. At each push the module signs in to the Remote UI as System
+  Manager, exports the address book, copies that entry's stored password onto
+  its own entries, and loads the book back. It never needs to know how the
+  printer encrypts passwords. If the share password changes, IT retypes it in
+  that one entry and the next push spreads it.
+- **Where its settings live.** On the Printers page, per printer: the System
+  Manager ID and PIN go in the printer's admin sign-in boxes, and the template
+  entry's name and the address book PIN, if the printer has one, are under
+  "Values from the module". Nothing needs uploading or storing: the encrypted
+  password is read fresh from the printer each time.
+- **Built and tested against a mock, not yet run against a printer.** Sign-in
+  and the Export and Import requests follow the real MF642C's pages. One step
+  is a guess: where the exported file is fetched from once the export is
+  done. `tools/CanonProbe` runs the steps against a real printer and records
+  what it answers.
 - **A copied encrypted password is accepted, as far as can be seen.** A file
   with one entry's encrypted password copied onto a new entry loaded, and the
   printer shows a password as set on the new entry. That it is the right
