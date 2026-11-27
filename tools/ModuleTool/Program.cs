@@ -24,6 +24,36 @@ public static class ToolProgram
         }
     }
 
+    /// <summary>
+    /// A module must not ask for a newer copy of the module contract than the oldest app it says it
+    /// works with has. Apps before 0.2.8 leave that to .NET, which refuses, and the module then fails
+    /// to load with "could not load file or assembly ScanRelay.ModuleSdk".
+    /// </summary>
+    private static void CheckContractVersion(string folder)
+    {
+        var dataPath = Path.Combine(folder, "module.yaml");
+        if (!File.Exists(dataPath)) return;   // the package step reports this properly
+        var data = ModuleData.Parse(File.ReadAllText(dataPath));
+        var adapter = Path.Combine(folder, data.Adapter);
+        if (!File.Exists(adapter)) return;
+
+        using var file = File.OpenRead(adapter);
+        using var pe = new System.Reflection.PortableExecutable.PEReader(file);
+        var reader = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+        foreach (var handle in reader.AssemblyReferences)
+        {
+            var reference = reader.GetAssemblyReference(handle);
+            if (reader.GetString(reference.Name) != "ScanRelay.ModuleSdk") continue;
+            var oldestApp = Version.Parse(data.AppVersions.Min);
+            var asked = new Version(reference.Version.Major, reference.Version.Minor, Math.Max(reference.Version.Build, 0));
+            if (asked > oldestApp)
+            {
+                throw new ModuleException($"{data.Adapter} was built against version {asked} of ScanRelay.ModuleSdk, but the module says it works from app {data.AppVersions.Min}. "
+                    + "It would not load there. Build the module against the ScanRelay.ModuleSdk in this repo, whose version is fixed for this reason.");
+            }
+        }
+    }
+
     public static int Run(string[] args, TextWriter output)
     {
         switch (args)
@@ -32,6 +62,7 @@ public static class ToolProgram
             {
                 // Build to a temporary name first, because the final name comes from the module data.
                 Directory.CreateDirectory(outputFolder);
+                CheckContractVersion(folder);
                 var temporary = Path.Combine(outputFolder, Guid.NewGuid().ToString("N") + ".tmp");
                 var data = ModulePackage.Create(folder, temporary);
                 var final = Path.Combine(outputFolder, $"{data.Id}-{data.Version}{ModulePackage.Extension}");

@@ -76,6 +76,13 @@ to reinstall: it is added in the installer's Modules step, or with the
 2. Merge it to the branch releases are made from.
 3. Run "Publish modules" from the Actions page on that branch and approve it.
 
+A module published this way must load in apps older than the code it was built
+beside. That is why `ScanRelay.ModuleSdk` has one fixed assembly version that
+never changes: a module records the version it was built against, and apps
+before 0.2.8 refuse a module that asks for a newer copy than they have. The
+module tool refuses to pack a module that would not load in the oldest app it
+names.
+
 What it will not do:
 
 - **Publish a module that needs a newer app than the latest release.** The

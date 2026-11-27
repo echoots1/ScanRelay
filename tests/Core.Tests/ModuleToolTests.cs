@@ -151,4 +151,23 @@ public sealed class ModuleToolTests : IDisposable
         Assert.Contains("needs ScanRelay 0.3.0 or later", tooNew.Message);
         Assert.Empty(Directory.GetFiles(published2, "*.srmod"));
     }
+
+    [Fact]
+    public void The_module_contract_keeps_one_fixed_version_so_a_module_loads_in_older_apps()
+    {
+        // A module built beside app 0.2.8 was refused by app 0.2.7 when this followed the app's version.
+        Assert.Equal(new Version(0, 1, 0, 0), typeof(ScanRelay.ModuleSdk.IDeviceAdapter).Assembly.GetName().Version);
+    }
+
+    [Fact]
+    public void A_module_built_against_a_newer_contract_than_its_oldest_app_has_is_not_packed()
+    {
+        var into = Path.Combine(_work, "packed");
+
+        // The sample is built against contract 0.1.0. Saying it works from an app older than that is the mistake being caught.
+        var refused = Assert.Throws<ModuleException>(() => Pack(into, "1.0.0", minApp: "0.0.9"));
+
+        Assert.Contains("would not load there", refused.Message);
+        Assert.False(Directory.Exists(into) && Directory.GetFiles(into, "*.srmod").Length > 0);
+    }
 }

@@ -1,2 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      Never change this. A module records the version of this assembly it was built against, and
+      .NET will not give it an older one. Modules are published separately from the app and must
+      load in every app from their app_versions.min upward, so this stays at or below the version
+      of every app ever released (0.2.0 was the first to load a real module). The contract's own
+      version is ModuleSdkInfo.Version; the app's version is in the file and product version.
+    -->
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+  </PropertyGroup>
 </Project>

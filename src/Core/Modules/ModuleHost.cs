@@ -146,7 +146,11 @@ public sealed class ModuleHost(InstallConfig install, TrustedKeys keys, HttpClie
 
         protected override Assembly? Load(AssemblyName assemblyName)
         {
-            if (assemblyName.Name == typeof(IDeviceAdapter).Assembly.GetName().Name) return null;
+            // The contract is the app's own copy, whatever version of it the module was built against.
+            // Handing it over here, instead of leaving it to .NET, means a module built beside a newer
+            // app still loads: .NET by itself refuses to give a module an older copy than it asked for.
+            var contract = typeof(IDeviceAdapter).Assembly;
+            if (assemblyName.Name == contract.GetName().Name) return contract;
             using var zip = ZipFile.OpenRead(packagePath);
             return zip.GetEntry(assemblyName.Name + ".dll") is null ? null : LoadFromPackage(assemblyName.Name + ".dll");
         }
