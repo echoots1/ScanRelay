@@ -132,7 +132,10 @@ public sealed partial class BrotherWebUi : IDisposable
     private async Task<int> PostAsync(string path, string body, string what, CancellationToken ct)
     {
         Trace?.Invoke(what);
-        using var request = new HttpRequestMessage(HttpMethod.Post, _base + path) { Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded") };
+        using var request = new HttpRequestMessage(HttpMethod.Post, _base + path) { Content = new ByteArrayContent(Encoding.UTF8.GetBytes(body)) };
+
+        // Exactly the header the page's own script sets, with nothing added to it.
+        request.Content.Headers.TryAddWithoutValidation("Content-Type", "application/x-www-form-urlencoded");
         using var response = await SendAsync(request, ct);
         Trace?.Invoke($"    -> {(int)response.StatusCode}");
         return (int)response.StatusCode;

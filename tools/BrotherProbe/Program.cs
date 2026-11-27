@@ -44,6 +44,17 @@ public static class BrotherProbeProgram
         {
             Say($"Brother probe, {DateTime.UtcNow:u}.");
             Say("Model: " + (await ui.ReadModelAsync(default) ?? "not found"));
+
+            // The scanner's own page scripts, fetched before signing in so they are in the report even when sign-in fails.
+            // They are the scanner's code and hold no settings. The first is the one that handles the Login button.
+            foreach (var path in new[] { "/EWS/common/js/mobilemenucontrl.js", "/EWS/common/js/netscan.js", "/EWS/common/js/submit_result_controller.js" })
+            {
+                var (status, body) = await ui.GetPageAsync(path, default);
+                report.WriteLine($"----- {path} ({status}, {body.Length} characters) -----");
+                if (status == 200) report.WriteLine(body);
+                report.WriteLine("----- end -----");
+            }
+
             await ui.SignInAsync(password, default);
             Say("Signed in.");
             try
@@ -64,7 +75,7 @@ public static class BrotherProbeProgram
                 if (!slots.Any(s => s.IsNetwork)) Say("No slot is of the Network kind. Set one profile to Network on the scanner's \"Scan to FTP/SFTP/Network/SharePoint\" page, then run this again.");
 
                 // The page where a slot's kind is chosen. Its script is the scanner's own code and holds no settings.
-                foreach (var path in new[] { "/EWS/common/js/netscan.js", "/EWS/scan/netscan.html" })
+                foreach (var path in new[] { "/EWS/scan/netscan.html" })
                 {
                     var (status, body) = await ui.GetPageAsync(path, default);
                     report.WriteLine($"----- {path} ({status}, {body.Length} characters) -----");
