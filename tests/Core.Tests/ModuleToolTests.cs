@@ -81,4 +81,74 @@ public sealed class ModuleToolTests : IDisposable
             ModulePackage.Sha256(Path.Combine(_work, "a", "scanrelay-sample-1.0.0.srmod")),
             ModulePackage.Sha256(Path.Combine(_work, "b", "scanrelay-sample-1.0.0.srmod")));
     }
+
+    /// <summary>Packs the sample module at a given version, as a build of the repo would.</summary>
+    private string Pack(string into, string version, string minApp = "0.1.0", string id = "scanrelay-sample")
+    {
+        var source = Path.Combine(_work, "src-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(source);
+        File.Copy(Path.Combine(SampleModule.BuildOutput(), "ScanRelay.Modules.Sample.dll"), Path.Combine(source, "ScanRelay.Modules.Sample.dll"));
+        var data = File.ReadAllText(Path.Combine(SampleModule.BuildOutput(), "module.yaml"));
+        data = System.Text.RegularExpressions.Regex.Replace(data, @"(?m)^version: .*$", "version: " + version);
+        data = System.Text.RegularExpressions.Regex.Replace(data, @"(?m)^id: .*$", "id: " + id);
+        data = System.Text.RegularExpressions.Regex.Replace(data, @"(?m)^(\s+)min: .*$", "$1min: " + minApp);
+        File.WriteAllText(Path.Combine(source, "module.yaml"), data);
+        Assert.Equal(0, Run("pack", source, into));
+        return Path.Combine(into, $"{id}-{version}.srmod");
+    }
+
+    [Fact]
+    public void Between_releases_only_new_and_newer_modules_are_published_and_the_rest_are_left_exactly_as_they_are()
+    {
+        var (published, packed) = (Path.Combine(_work, "published"), Path.Combine(_work, "packed"));
+        var kept = Pack(published, "1.0.0");
+        File.WriteAllText(kept + ".sig", "the signature it was published with");
+        var older = Pack(published, "1.0.0", id: "another-module");
+        File.WriteAllText(older + ".sig", "an old signature");
+        var keptBytes = File.ReadAllBytes(kept);
+
+        Pack(packed, "1.0.0");                              // unchanged: already out
+        Pack(packed, "1.1.0", id: "another-module");        // a newer version
+        Pack(packed, "0.1.0", id: "brand-new");             // never published
+
+        Assert.Equal(0, Run("publish-set", packed, published, "0.2.8"));
+
+        Assert.Equal(["another-module-1.1.0.srmod", "brand-new-0.1.0.srmod"], File.ReadAllLines(Path.Combine(published, "changed.txt")));
+        Assert.Equal(keptBytes, File.ReadAllBytes(kept));
+        Assert.Equal("the signature it was published with", File.ReadAllText(kept + ".sig"));
+        Assert.False(File.Exists(older));
+        Assert.False(File.Exists(older + ".sig"));
+        Assert.Equal(["another-module-1.1.0.srmod", "brand-new-0.1.0.srmod", "scanrelay-sample-1.0.0.srmod"],
+            Directory.GetFiles(published, "*.srmod").Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        Assert.Contains("already published", _output.ToString());
+    }
+
+    [Fact]
+    public void With_nothing_new_nothing_is_published()
+    {
+        var (published, packed) = (Path.Combine(_work, "published"), Path.Combine(_work, "packed"));
+        Pack(published, "1.0.0");
+        Pack(packed, "1.0.0");
+
+        Assert.Equal(0, Run("publish-set", packed, published, "0.2.8"));
+
+        Assert.Empty(File.ReadAllLines(Path.Combine(published, "changed.txt")));
+        Assert.Contains("Nothing to publish", _output.ToString());
+    }
+
+    [Fact]
+    public void A_version_that_goes_down_or_a_module_that_needs_a_newer_app_is_refused()
+    {
+        var (published, packed) = (Path.Combine(_work, "published"), Path.Combine(_work, "packed"));
+        Pack(published, "1.2.0");
+        Pack(packed, "1.1.0");
+        var down = Assert.Throws<ModuleException>(() => Run("publish-set", packed, published, "0.2.8"));
+        Assert.Contains("only goes up", down.Message);
+
+        var (published2, packed2) = (Path.Combine(_work, "published2"), Path.Combine(_work, "packed2"));
+        Pack(packed2, "1.0.0", minApp: "0.3.0");
+        var tooNew = Assert.Throws<ModuleException>(() => Run("publish-set", packed2, published2, "0.2.8"));
+        Assert.Contains("needs ScanRelay 0.3.0 or later", tooNew.Message);
+        Assert.Empty(Directory.GetFiles(published2, "*.srmod"));
+    }
 }

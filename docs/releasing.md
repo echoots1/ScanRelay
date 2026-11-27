@@ -58,3 +58,38 @@ The project is run so that it can apply for free open-source signing once it
 has a release history. Left until then: the code signing policy page, the
 credit line the signing programme requires, and connecting this pipeline to
 the signing service.
+
+## Publishing a module between releases
+
+A new or updated printer module does not need a new version of ScanRelay.
+`.github/workflows/modules.yml` ("Publish modules" on the Actions page)
+builds every module, signs the ones that are new or have a higher version,
+and adds them to the **latest published release**, replacing that release's
+module list. The app and the installer read the module list from the latest
+release, so every install sees the new module at its next check, with nothing
+to reinstall: it is added in the installer's Modules step, or with the
+"Add or update modules" button on the Modules page.
+
+1. Raise `version` in the module's `module.yaml`. A module already published
+   at the same version is never replaced, so a change without a new version is
+   not published.
+2. Merge it to the branch releases are made from.
+3. Run "Publish modules" from the Actions page on that branch and approve it.
+
+What it will not do:
+
+- **Publish a module that needs a newer app than the latest release.** The
+  module list holds one version of each module, so that would take the module
+  away from everyone on the current release. Such a module goes out with the
+  app release it needs.
+- **Lower a module's version.**
+- **Publish anything unsigned.** Both halves of the signing key must be in
+  place, and it stops if they do not match.
+
+The release page gets a "Modules published since this release" section naming
+what was added and when, and its `SHA256SUMS.txt` is brought up to date. The
+installer on that release is not touched.
+
+A later release of the app builds every module again from the same branch, so
+it carries the same module versions.
+

@@ -1,0 +1,139 @@
+name: Publish modules
+
+# Publishes new and updated printer modules without a new version of the app.
+# The app and the installer read the module list from the latest release, so this adds the
+# modules to that release and replaces its module list. Nothing else on the release changes.
+# Started by hand from the Actions page, on the branch that holds the module's code.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never at the same time as a release or another run of this: both write to the latest release.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  modules:
+    name: Build, sign and publish modules
+    runs-on: windows-latest
+    # The "release" environment holds the signing key and names who must approve.
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Check the signing key
+        shell: pwsh
+        env:
+          MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
+        run: |
+          # Unlike a release, there is nothing to publish here without the key: an unsigned module is not listed.
+          if (-not $env:MODULE_SIGNING_KEY) { throw "The MODULE_SIGNING_KEY secret is not set on the release environment. See docs/releasing.md." }
+          if (-not (Test-Path catalog/signing-key.pub.pem)) { throw "catalog/signing-key.pub.pem is not in the repo. See docs/releasing.md." }
+          dotnet build tools/ModuleTool --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Building the module tool failed." }
+          dotnet run --project tools/ModuleTool --configuration Release --no-build -- key-matches catalog/signing-key.pub.pem
+          if ($LASTEXITCODE -ne 0) { throw "The signing key does not match the public key the app is built to trust." }
+
+      - name: Test
+        run: |
+          dotnet build ScanRelay.slnx --configuration Release
+          dotnet test ScanRelay.slnx --configuration Release --no-build
+
+      - name: Fetch what the latest release offers now
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = "${{ github.repository }}"
+          $tag = gh release view --repo $repo --json tagName --jq .tagName
+          if ($LASTEXITCODE -ne 0 -or -not $tag) { throw "There is no published release to add modules to. Make a release first." }
+          "TAG=$tag" >> $env:GITHUB_ENV
+          "APP=$($tag.TrimStart('v'))" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force published, before | Out-Null
+          # A release whose modules were not signed has none of these. That is not an error: every module is then new.
+          gh release download $tag --repo $repo --dir published --pattern "*.srmod" --pattern "*.srmod.sig" 2>$null
+          gh release download $tag --repo $repo --dir before --pattern "SHA256SUMS.txt" 2>$null
+          $global:LASTEXITCODE = 0
+          (Get-ChildItem published -Filter *.srmod).Name | Set-Content before/modules.txt
+          Write-Host "The latest release is $tag. It offers: $((Get-ChildItem published -Filter *.srmod).Name -join ', ')"
+
+      - name: Build the modules and work out which are new
+        shell: pwsh
+        run: |
+          $tool = "tools/ModuleTool"
+          # The sample module drives a mock printer and is not shipped. A module with no module.yaml yet is still being built.
+          Get-ChildItem modules -Recurse -Filter *.csproj | Where-Object { $_.FullName -notmatch 'scanrelay[\\/]sample' -and (Test-Path (Join-Path $_.DirectoryName 'module.yaml')) } | ForEach-Object {
+            $out = "artifacts/modules/$($_.BaseName)"
+            dotnet publish $_.FullName --configuration Release --output $out
+            if ($LASTEXITCODE -ne 0) { throw "Publishing $($_.Name) failed." }
+            dotnet run --project $tool --configuration Release --no-build -- pack $out packed
+            if ($LASTEXITCODE -ne 0) { throw "Packing $($_.Name) failed." }
+          }
+          dotnet run --project $tool --configuration Release --no-build -- publish-set packed published $env:APP
+          if ($LASTEXITCODE -ne 0) { throw "The modules cannot be published as they are. The reason is above." }
+          $changed = @(Get-Content published/changed.txt | Where-Object { $_ })
+          Remove-Item published/changed.txt
+          "CHANGED=$($changed -join ',')" >> $env:GITHUB_ENV
+          if ($changed.Count -eq 0) { Write-Host "::notice::Nothing to publish: every module is already out at its current version. Raise the version in a module's module.yaml to publish a change to it." }
+
+      - name: Sign, list and publish
+        if: env.CHANGED != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
+        run: |
+          $repo = "${{ github.repository }}"
+          $tool = "tools/ModuleTool"
+          $changed = $env:CHANGED -split ','
+          foreach ($file in $changed) {
+            dotnet run --project $tool --configuration Release --no-build -- sign "published/$file"
+            if ($LASTEXITCODE -ne 0) { throw "Signing $file failed." }
+            dotnet run --project $tool --configuration Release --no-build -- verify "published/$file" catalog/signing-key.pub.pem
+            if ($LASTEXITCODE -ne 0) { throw "$file does not pass the check the app makes. Nothing was published." }
+          }
+          dotnet run --project $tool --configuration Release --no-build -- index published
+          if ($LASTEXITCODE -ne 0) { throw "Writing the module list failed." }
+
+          # Older versions that the new list no longer names come off the release.
+          $now = (Get-ChildItem published -Filter *.srmod).Name
+          $gone = @(Get-Content before/modules.txt | Where-Object { $_ -and ($now -notcontains $_) })
+
+          # The checksums file covers every file on the release, so it is brought up to date, not rewritten.
+          $sums = [ordered]@{}
+          if (Test-Path before/SHA256SUMS.txt) {
+            Get-Content before/SHA256SUMS.txt | Where-Object { $_ -match '^([0-9a-f]{64})\s+(.+)$' } | ForEach-Object { $sums[$Matches[2]] = $Matches[1] }
+          }
+          foreach ($file in $gone) { $sums.Remove($file); $sums.Remove("$file.sig") }
+          $upload = @($changed | ForEach-Object { "published/$_"; "published/$_.sig" }) + @("published/modules-index.json", "published/modules-index.json.sig")
+          foreach ($path in $upload) { $sums[(Split-Path $path -Leaf)] = (Get-FileHash $path -Algorithm SHA256).Hash.ToLower() }
+          $sums.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Value)  $($_.Name)" } | Set-Content published/SHA256SUMS.txt
+          $upload += "published/SHA256SUMS.txt"
+
+          gh release upload $env:TAG @upload --repo $repo --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Uploading to the release failed. The release may hold some of the new files; run this again to finish." }
+          foreach ($file in $gone) {
+            gh release delete-asset $env:TAG $file --repo $repo --yes
+            gh release delete-asset $env:TAG "$file.sig" --repo $repo --yes
+          }
+          $global:LASTEXITCODE = 0
+
+          # Say on the release what was added, so the page still tells the whole story.
+          $body = (gh release view $env:TAG --repo $repo --json body --jq .body) -join "`n"
+          $heading = "## Modules published since this release"
+          if ($body -notmatch [regex]::Escape($heading)) { $body = "$body`n`n$heading`n`nThese were added without a new version of ScanRelay. Add or update them in the installer's Modules step, or with the button on the Modules page.`n" }
+          $line = "- $(Get-Date -Format 'yyyy-MM-dd'): $(($changed | ForEach-Object { $_ -replace '\.srmod$', '' }) -join ', ')"
+          "$body`n$line" | Set-Content notes.md
+          gh release edit $env:TAG --repo $repo --notes-file notes.md
+          if ($LASTEXITCODE -ne 0) { throw "The modules are published, but the release text could not be updated." }
+          Write-Host "::notice::Published to $($env:TAG): $($changed -join ', ')"
