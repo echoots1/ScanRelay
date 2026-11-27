@@ -224,8 +224,9 @@ against a mock only.
 - **Names are cut to 14 characters.**
 - **How its Web Based Management works,** from its own page scripts and a real
   read: the pages are empty shells. Sign-in is one password posted to
-  `/auth/login`, over https only, with the content type header exactly as the
-  page sets it. The profile list is XML at `/ft/scan_profile`, and the kind of
+  `/auth/login`, over https only. The scanner refuses it with 401 unless the
+  visitor has opened one of its pages first, so the module opens the front
+  page before signing in; three runs on a real scanner showed this. The profile list is XML at `/ft/scan_profile`, and the kind of
   all 25 slots is posted back to it in one go. One Network profile is XML at
   `/ft/scan_tosharefoler=N&&` (the spelling is the scanner's). Saving posts
   every setting of the profile back to the same address as `name=value` pairs
