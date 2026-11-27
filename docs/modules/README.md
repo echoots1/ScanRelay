@@ -240,6 +240,7 @@ itself has not been tried yet.**
   profile and reads it back. Passwords, PINs and profile names are left out
   of its report.
 - **Version 0.1.0 did not load in app 0.2.7.** It was the first module published apart from an app release, and was built against a newer copy of the module contract than that app has. 0.1.1 is the same module built against the fixed-version contract.
+- **The scanner leaves an empty test file in the folder.** It writes one to check it can reach the share and cannot delete it again, because the printer account may only create and write. From app 0.2.8 an empty file that stays empty for ten minutes is removed quietly; before that it became a failed job.
 - **Proven on the real scanner:** a save as the module sends it is taken, a
   scan to the saved profile arrives, and clearing all four fields removes a
   profile.

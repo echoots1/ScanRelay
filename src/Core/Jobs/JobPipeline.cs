@@ -27,7 +27,7 @@ public sealed class JobPipeline(
     /// <summary>A file counts as finished when its size has not changed for this long and it opens exclusively.</summary>
     public static readonly TimeSpan QuietTime = TimeSpan.FromSeconds(3);
 
-    /// <summary>A file that never finishes, or stays empty, fails after this long.</summary>
+    /// <summary>A file that never finishes fails after this long. One that stays empty is cleared away after it.</summary>
     public static readonly TimeSpan GiveUpAfter = TimeSpan.FromMinutes(10);
 
     /// <summary>Waits before the three retries of a Graph or network error.</summary>
@@ -79,13 +79,36 @@ public sealed class JobPipeline(
             }
             else if (now - tracked.FirstSeen >= GiveUpAfter)
             {
-                await ClaimAsync(path, tracked, size == 0 ? "The file stayed empty." : "The printer never finished writing the file.", ct);
+                if (size == 0) RemoveEmpty(path);
+                else await ClaimAsync(path, tracked, "The printer never finished writing the file.", ct);
             }
         }
 
         // Files that went away on their own, such as a printer's temporary file.
         foreach (var path in _tracked.Keys.Where(p => !seen.Contains(p))) _tracked.TryRemove(path, out _);
         return claimed;
+    }
+
+    /// <summary>
+    /// An empty file is not a scan. Some scanners write one to see that they can reach the folder and
+    /// then cannot take it away again, because the printer account may only create and write. So an
+    /// empty file that has stayed empty is cleared away quietly: no failed job, no alert.
+    /// </summary>
+    private void RemoveEmpty(string path)
+    {
+        try
+        {
+            // Looked at again at the last moment, in case it started to fill.
+            if (new FileInfo(path).Length != 0) return;
+            File.Delete(path);
+            _tracked.TryRemove(path, out _);
+            logger.LogInformation("Removed {File} from Inbox: it stayed empty for {Minutes} minutes, so it was a scanner's test file and not a scan", Path.GetRelativePath(data.Inbox, path), GiveUpAfter.TotalMinutes);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Still held by something. It is looked at again at the next pass.
+            logger.LogDebug("Could not remove the empty file {File}: {Reason}", Path.GetRelativePath(data.Inbox, path), e.Message);
+        }
     }
 
     /// <summary>Jobs left unfinished by a restart, ready to process.</summary>

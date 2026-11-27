@@ -139,16 +139,14 @@ public class JobTests
         Assert.Equal(1, await rig.Pipeline.RunOnceAsync());
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("half")]
-    public async Task A_file_that_never_finishes_or_stays_empty_fails_after_ten_minutes(string content)
+    [Fact]
+    public async Task A_file_that_never_finishes_fails_after_ten_minutes()
     {
         await using var rig = await Rig.StartAsync();
         var sam = await rig.AddPersonAsync("Sam Scanner");
-        var path = rig.Drop(sam.Id.ToString(), "scan.pdf", content);
-        using var held = content.Length > 0 ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete) : null;
-        if (held is not null && !OperatingSystem.IsWindows())
+        var path = rig.Drop(sam.Id.ToString(), "scan.pdf", "half");
+        using var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        if (!OperatingSystem.IsWindows())
         {
             // Other systems do not enforce the lock, so keep the size changing instead.
             held.Dispose();
@@ -156,19 +154,64 @@ public class JobTests
 
         await rig.Pipeline.RunOnceAsync();
         rig.Time.Advance(TimeSpan.FromMinutes(9));
-        if (content.Length > 0) File.AppendAllText(path, "x");
+        File.AppendAllText(path, "x");
         await rig.Pipeline.RunOnceAsync();
         Assert.Empty(await rig.JobsAsync());
 
         rig.Time.Advance(TimeSpan.FromMinutes(1));
-        if (content.Length > 0) File.AppendAllText(path, "x");
+        File.AppendAllText(path, "x");
         await rig.Pipeline.RunOnceAsync();
 
         var job = Assert.Single(await rig.JobsAsync());
         Assert.Equal(JobStatus.Failed, job.Status);
-        Assert.Contains(content.Length == 0 ? "empty" : "never finished", job.Error);
+        Assert.Contains("never finished", job.Error);
         Assert.False(File.Exists(path));
         Assert.Empty(rig.Env.State.Files(sam, "Dokumente/Scans"));
+    }
+
+    [Fact]
+    public async Task A_scanners_empty_test_file_is_cleared_away_without_a_failed_job()
+    {
+        await using var rig = await Rig.StartAsync();
+        var sam = await rig.AddPersonAsync("Sam Scanner");
+        var empty = rig.Drop(sam.Id.ToString(), "connection-test.tmp", "");
+
+        // It is given the same ten minutes as any file, since a real scan also starts out empty.
+        await rig.Pipeline.RunOnceAsync();
+        rig.Time.Advance(TimeSpan.FromMinutes(9));
+        await rig.Pipeline.RunOnceAsync();
+        Assert.True(File.Exists(empty));
+
+        rig.Time.Advance(TimeSpan.FromMinutes(1));
+        await rig.Pipeline.RunOnceAsync();
+
+        Assert.False(File.Exists(empty));
+        Assert.Empty(await rig.JobsAsync());
+        Assert.Equal(0, rig.Pipeline.WaitingInInbox);
+
+        // A real scan to the same folder afterwards is delivered as usual.
+        rig.Drop(sam.Id.ToString(), "scan.pdf", "a real scan");
+        await rig.Pipeline.RunOnceAsync();
+        rig.Time.Advance(JobPipeline.QuietTime);
+        await rig.Pipeline.RunOnceAsync();
+        Assert.Equal(JobStatus.Uploaded, Assert.Single(await rig.JobsAsync()).Status);
+    }
+
+    [Fact]
+    public async Task An_empty_file_that_starts_to_fill_is_treated_as_the_scan_it_is()
+    {
+        await using var rig = await Rig.StartAsync();
+        var sam = await rig.AddPersonAsync("Sam Scanner");
+        var path = rig.Drop(sam.Id.ToString(), "scan.pdf", "");
+        await rig.Pipeline.RunOnceAsync();
+        rig.Time.Advance(TimeSpan.FromMinutes(5));
+
+        File.WriteAllText(path, "the pages arrived at last");
+        await rig.Pipeline.RunOnceAsync();
+        rig.Time.Advance(JobPipeline.QuietTime);
+        await rig.Pipeline.RunOnceAsync();
+
+        Assert.Equal(JobStatus.Uploaded, Assert.Single(await rig.JobsAsync()).Status);
     }
 
     [Fact]
