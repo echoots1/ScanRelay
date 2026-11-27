@@ -8,6 +8,7 @@ added.
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
 | `kyocera-ecosys` | ECOSYS M8124cidn | **Working on a real printer.** A sync pushed the list, a scan at the panel reached OneDrive. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
+| `brother-ads` | ADS-4900W | **One profile saved, scanned to and cleared on a real scanner from the probe tool. A push from the app is not confirmed yet.** See below. |
 | `canon-imageclass` | imageCLASS MF642C/643C/644C and MF650C Series; MF751Cdw II not tried yet | **Reading and loading work on a real MF642C from the probe tool. A push from the app, and a scan with the copied password, are not confirmed yet.** See below. |
 
 ## The first printers
@@ -206,10 +207,10 @@ Work has started with the MF642C.
 
 ## Brother ADS scanners: what is known
 
-Built for an ADS-4900W (main firmware 3.20), id `brother-ads`. A real scanner
-has been signed in to and read. **Nothing has been written to one yet,** so
-the saving half is built from the scanner's own page scripts and tested
-against a mock only.
+Built for an ADS-4900W (main firmware 3.20), id `brother-ads`. On a real
+scanner, with `tools/BrotherProbe`: one profile was saved, a scan to it
+reached the share, and the profile was cleared again. **A push from the app
+itself has not been tried yet.**
 
 - **One Scan to Network profile per person.** The scanner has 25 profile
   slots, each a Network (shared folder), FTP, SFTP, HTTP(S) or SharePoint
@@ -238,11 +239,14 @@ against a mock only.
 - **`tools/BrotherProbe`** reads a real scanner, and with `--add` saves one
   profile and reads it back. Passwords, PINs and profile names are left out
   of its report.
-- **Not known yet:** whether a real scanner takes a save as the module sends
-  it, whether clearing all four fields is how a profile is removed, whether
-  changing a slot's kind disturbs anything else, and in what form the scanner
-  hands a saved password back (which decides whether a changed share password
-  is noticed).
+- **Proven on the real scanner:** a save as the module sends it is taken, a
+  scan to the saved profile arrives, and clearing all four fields removes a
+  profile.
+- **Not known yet:** in what form the scanner hands a saved password back
+  (which decides whether a changed share password is noticed by itself), and
+  whether changing a slot's kind from FTP to Network was exercised: the
+  profile saved in the test may have gone into the one slot that already was
+  a Network one.
 
 ## Why the vendor modules were not built blind
 

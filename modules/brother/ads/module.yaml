@@ -25,6 +25,6 @@ address_book:
   max_entries: 25
   one_touch: false
 prerequisites: []
-tested_firmware: []                 # read on an ADS-4900W, main firmware 3.20; nothing written to one yet
+tested_firmware: ["3.20"]           # ADS-4900W main firmware: one profile saved, scanned to and cleared with tools/BrotherProbe. A push from the app is not yet tried.
 options:
   secure: "true"                    # the scanner refuses a sign-in over plain http

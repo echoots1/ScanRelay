@@ -44,7 +44,7 @@ public sealed class BrotherModuleTests : IAsyncLifetime
         Assert.True(data.Unofficial);
         Assert.Equal(25, data.EntryLimit());
         Assert.True(data.MatchesWindowsName("Brother ADS-4900W LAN"));
-        Assert.Empty(data.TestedFirmware);
+        Assert.Equal(["3.20"], data.TestedFirmware);
     }
 
     [Fact]
