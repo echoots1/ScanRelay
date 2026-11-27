@@ -13,9 +13,23 @@ internal static class Everyday
 {
     public const string Title = "ScanRelay";
 
-    private static string Self => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "ScanRelaySetup.exe");
+    /// <summary>This program's own file.</summary>
+    public static string Self => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "ScanRelaySetup.exe");
 
-    /// <summary>The admin screen as opened on this server, from the install settings beside this program.</summary>
+    /// <summary>
+    /// Runs a program as an administrator and waits for it: Windows asks first. Returns its exit code, or
+    /// null when Windows started nothing. Throws <see cref="System.ComponentModel.Win32Exception"/> when
+    /// the person says no.
+    /// </summary>
+    public static int? RunAsAdministrator(string program, string arguments)
+    {
+        using var process = Process.Start(new ProcessStartInfo(program, arguments) { UseShellExecute = true, Verb = "runas" });
+        if (process is null) return null;
+        process.WaitForExit();
+        return process.ExitCode;
+    }
+
+    /// <summary>The admin screen as opened on this server: the address setup recorded, or failing that the one in the install settings beside this program.</summary>
     public static string? AdminScreenUrl()
     {
         // Setup leaves the address where anyone may read it. The install settings themselves are closed to all but administrators.
@@ -36,10 +50,12 @@ internal static class Everyday
         if (elevated) return ServiceControl.Run(verb);
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(Self, $"/service {verb}") { UseShellExecute = true, Verb = "runas" });
-            if (process is null) return "Windows did not start the administrator step.";
-            process.WaitForExit();
-            return process.ExitCode == 0 ? null : $"The ScanRelay service could not {verb}. Look in Windows Event Viewer, under Application, for entries from ScanRelay.";
+            return RunAsAdministrator(Self, $"/service {verb}") switch
+            {
+                null => "Windows did not start the administrator step.",
+                0 => null,
+                _ => $"The ScanRelay service could not {verb}. Look in Windows Event Viewer, under Application, for entries from ScanRelay.",
+            };
         }
         catch (System.ComponentModel.Win32Exception)
         {
@@ -182,7 +198,7 @@ internal sealed class TrayIcon : ApplicationContext
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            using var own = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Application.ExecutablePath) ?? SystemIcons.Application;
+            using var own = Icon.ExtractAssociatedIcon(Everyday.Self) ?? SystemIcons.Application;
             using var sized = new Icon(own, 32, 32);
             g.DrawIcon(sized, new Rectangle(0, 0, 32, 32));
             var colour = state switch

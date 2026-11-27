@@ -127,6 +127,14 @@ internal abstract class WizardPage : UserControl
         return control;
     }
 
+    /// <summary>A paragraph set in under the choice above it, explaining that choice.</summary>
+    protected Label AddNote(string text, int spaceBelow = 3)
+    {
+        var label = AddText(text);
+        label.Margin = new Padding(22, 0, 3, spaceBelow);
+        return label;
+    }
+
     /// <summary>A paragraph that wraps to the page's width.</summary>
     protected Label AddText(string text, bool spaceAbove = false)
     {

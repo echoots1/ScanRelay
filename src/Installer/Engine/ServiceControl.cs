@@ -45,14 +45,13 @@ public static class ServiceControl
             if (verb is "stop" or "restart")
             {
                 service.Refresh();
-                if (service.Status is not (ServiceControllerStatus.Stopped or ServiceControllerStatus.StopPending)) service.Stop();
-                service.WaitForStatus(ServiceControllerStatus.Stopped, Patience);
+                StopAndWait(service);
             }
 
             if (verb is "start" or "restart")
             {
                 service.Refresh();
-                if (service.Status is not (ServiceControllerStatus.Running or ServiceControllerStatus.StartPending)) service.Start();
+                StartIfNeeded(service);
                 service.WaitForStatus(ServiceControllerStatus.Running, Patience);
             }
 
@@ -68,11 +67,34 @@ public static class ServiceControl
         }
     }
 
+    /// <summary>Asks a running service to stop and waits until it has. Throws what <see cref="ServiceController"/> throws.</summary>
+    internal static void StopAndWait(ServiceController service)
+    {
+        if (service.Status is not (ServiceControllerStatus.Stopped or ServiceControllerStatus.StopPending)) service.Stop();
+        service.WaitForStatus(ServiceControllerStatus.Stopped, Patience);
+    }
+
+    /// <summary>Asks a stopped service to start. It does not wait.</summary>
+    internal static void StartIfNeeded(ServiceController service)
+    {
+        if (service.Status is not (ServiceControllerStatus.Running or ServiceControllerStatus.StartPending)) service.Start();
+    }
+
     /// <summary>The admin screen's address on this server, as setup recorded it, or null when ScanRelay is not installed.</summary>
-    public static string? AdminScreenUrl() => WindowsSteps.ReadLocalUrl();
+    public static string? AdminScreenUrl()
+    {
+        using var hklm = WindowsSteps.OpenMachineKey();
+        using var key = hklm.OpenSubKey(InstalledState.UninstallKey);
+        return key?.GetValue(WindowsSteps.LocalUrlValue) as string is { Length: > 0 } url ? url : null;
+    }
 
     /// <summary>Whether setup was asked to show the icon by the clock.</summary>
-    public static bool TrayIconWanted() => WindowsSteps.TrayIconWanted();
+    public static bool TrayIconWanted()
+    {
+        using var hklm = WindowsSteps.OpenMachineKey();
+        using var run = hklm.OpenSubKey(WindowsSteps.RunKey);
+        return run?.GetValue(WindowsSteps.RunValue) is not null;
+    }
 
     public static int ExitCode(ServiceState state) => state switch
     {

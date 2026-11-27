@@ -86,7 +86,8 @@ public sealed record ModulePlan(IReadOnlyList<CatalogEntry> Downloads, IReadOnly
             : $"The custom module \"{data.Id}\" says it does not work with ScanRelay {app}. Pushes to its printers are paused until its author provides a new build.";
     }
 
-    private static bool Works(CatalogEntry entry, Version app)
+    /// <summary>Whether a listed module says it works with this app. A badly written entry counts as no.</summary>
+    public static bool Works(CatalogEntry entry, Version app)
     {
         try
         {
@@ -99,5 +100,6 @@ public sealed record ModulePlan(IReadOnlyList<CatalogEntry> Downloads, IReadOnly
         }
     }
 
-    private static Version ParseVersion(string text) => Version.TryParse(text, out var v) ? v : new Version(0, 0);
+    /// <summary>A module's version for comparing. Text that is no version sorts lowest.</summary>
+    public static Version ParseVersion(string text) => Version.TryParse(text, out var v) ? v : new Version(0, 0);
 }

@@ -83,9 +83,9 @@ internal sealed class WebCertificatePage : WizardPage
     {
         AddText("The admin screen needs a certificate for HTTPS.");
         _selfSigned = AddRadio("Create a &self-signed certificate", model.Answers.WebCertThumbprint is null);
-        AddText("Works straight away. Browsers show a warning until the certificate is trusted on the admins' computers or replaced with one from your certificate authority.").Margin = new Padding(22, 0, 3, 8);
+        AddNote("Works straight away. Browsers show a warning until the certificate is trusted on the admins' computers or replaced with one from your certificate authority.", 8);
         _existing = AddRadio("&Use a certificate already on this server", model.Answers.WebCertThumbprint is not null);
-        AddText("Certificates in the Local Computer, Personal store that have a private key:").Margin = new Padding(22, 0, 3, 3);
+        AddNote("Certificates in the Local Computer, Personal store that have a private key:");
         _list = Add(
             new ListView
             {

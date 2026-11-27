@@ -11,7 +11,7 @@ internal static class Program
         var environment = new SetupEnvironment
         {
             AppVersion = ModuleHost.AppVersion,
-            SetupExePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "ScanRelaySetup.exe"),
+            SetupExePath = Everyday.Self,
             OpenEmbeddedPayload = () => typeof(Program).Assembly.GetManifestResourceStream(SetupEngine.PayloadName),
             Console = line.Quiet ? QuietConsole() : null,
         };
@@ -144,14 +144,8 @@ internal static class Program
             // Setup itself needs an administrator. Start again as one: Windows asks, as it does for any installer.
             try
             {
-                using var again = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(environment.SetupExePath, string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a)))
-                {
-                    UseShellExecute = true,
-                    Verb = "runas",
-                });
-                if (again is null) return 1;
-                again.WaitForExit();
-                return again.ExitCode;
+                var arguments = string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+                return Everyday.RunAsAdministrator(environment.SetupExePath, arguments) ?? 1;
             }
             catch (System.ComponentModel.Win32Exception)
             {

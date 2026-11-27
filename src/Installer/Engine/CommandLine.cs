@@ -32,7 +32,9 @@ public enum SetupMode
 public sealed record CommandLine(SetupMode Mode, bool Quiet, string? AnswersFile, bool KeepData, bool Help, string? Error, string? ServiceVerb = null)
 {
     /// <summary>The modes that change nothing about the install, so they need no administrator to begin with.</summary>
-    public bool IsEverydayUse => Mode is SetupMode.Tray or SetupMode.Open or SetupMode.Service or SetupMode.Status;
+    public bool IsEverydayUse => IsEveryday(Mode);
+
+    private static bool IsEveryday(SetupMode mode) => mode is SetupMode.Tray or SetupMode.Open or SetupMode.Service or SetupMode.Status;
 
     public const string Usage = """
         ScanRelaySetup.exe                              Install, or change an existing install.
@@ -122,8 +124,7 @@ public sealed record CommandLine(SetupMode Mode, bool Quiet, string? AnswersFile
         if (error is null && quiet && mode == SetupMode.Modify) error = "/modify opens a window, so it cannot be used with /quiet. Use /quiet /answers <file.json> to change an install.";
         if (error is null && quiet && mode == SetupMode.Modules) error = "/modules opens a window, so it cannot be used with /quiet. Use /quiet /answers <file.json> to change an install.";
         if (modes > 1) error ??= "Give one of /modify, /modules, /uninstall, /tray, /open, /service and /status, not several.";
-        var everyday = mode is SetupMode.Tray or SetupMode.Open or SetupMode.Service or SetupMode.Status;
-        if (error is null && everyday && (quiet || answers is not null || keepData)) error = "/tray, /open, /service and /status go with nothing else.";
+        if (error is null && IsEveryday(mode) && (quiet || answers is not null || keepData)) error = "/tray, /open, /service and /status go with nothing else.";
         return new CommandLine(mode, quiet, answers, keepData, help, error, verb);
     }
 }

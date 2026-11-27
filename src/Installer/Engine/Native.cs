@@ -139,7 +139,7 @@ public static class Native
         Check(NetUserSetInfo(null, name, 1003, ref info, out _), $"setting the password of the local account \"{name}\"");
     }
 
-    /// <summary>Password never expires, and the account cannot change it.</summary>
+    /// <summary>Password never expires, and the account cannot change it. Also writes the account's description.</summary>
     public static void SetLocalUserFlags(string name)
     {
         var flags = new UserInfo1008 { Flags = UfScript | UfNormalAccount | UfDontExpirePasswd | UfPasswdCantChange };

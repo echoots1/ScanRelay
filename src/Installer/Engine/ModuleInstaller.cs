@@ -94,7 +94,7 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
         {
             index = await catalog.FetchAsync(ct);
         }
-        catch (Exception e) when (e is ModuleException or HttpRequestException || (e is OperationCanceledException && !ct.IsCancellationRequested))
+        catch (Exception e) when (IsCatalogFailure(e, ct))
         {
             var reason = e is OperationCanceledException ? "GitHub did not answer in time." : e.Message;
             if (missing.Count > 0)
@@ -126,7 +126,7 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
                     var module = _store.Install(path, signature, allowCustom: false, time.GetUtcNow().UtcDateTime);
                     log.Line($"Installed the module {module.Id} {module.Version}. Its signature is the project's.");
                 }
-                catch (Exception e) when (e is ModuleException or HttpRequestException || (e is OperationCanceledException && !ct.IsCancellationRequested))
+                catch (Exception e) when (IsCatalogFailure(e, ct))
                 {
                     throw new SetupException($"The module {entry.Id} {entry.Version} could not be downloaded and installed. {e.Message}", e);
                 }
@@ -150,7 +150,7 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
                 var index = await new ModuleCatalog(http, source, keys).FetchAsync(ct);
                 warnings.AddRange(ModulePlan.Create(installed, FindDamaged(installed), index, requested, [], [], appUpdate: true, app).Warnings);
             }
-            catch (Exception e) when (e is ModuleException or HttpRequestException || (e is OperationCanceledException && !ct.IsCancellationRequested))
+            catch (Exception e) when (IsCatalogFailure(e, ct))
             {
                 warnings.Add("The module list could not be fetched from GitHub, so setup cannot tell whether the installed modules have versions for this release. "
                     + "If you continue, the installed modules are left as they are. " + (e is OperationCanceledException ? "" : e.Message));
@@ -223,4 +223,8 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
             throw new SetupException($"The module file {file} was not installed. {e.Message}", e);
         }
     }
+
+    /// <summary>GitHub not answering, answering wrongly or taking too long. Being asked to stop is not one of these.</summary>
+    private static bool IsCatalogFailure(Exception e, CancellationToken ct) =>
+        e is ModuleException or HttpRequestException || (e is OperationCanceledException && !ct.IsCancellationRequested);
 }

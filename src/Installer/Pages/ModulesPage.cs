@@ -125,9 +125,9 @@ internal sealed class ModulesPage : WizardPage
         var listed = new HashSet<string>();
         if (_catalog is not null)
         {
-            foreach (var group in _catalog.Modules.Where(m => Works(m, app)).GroupBy(m => m.Id).OrderBy(g => g.Key, StringComparer.Ordinal))
+            foreach (var group in _catalog.Modules.Where(m => ModulePlan.Works(m, app)).GroupBy(m => m.Id).OrderBy(g => g.Key, StringComparer.Ordinal))
             {
-                var entry = group.OrderByDescending(m => Version.TryParse(m.Version, out var v) ? v : new Version(0, 0)).First();
+                var entry = group.OrderByDescending(m => ModulePlan.ParseVersion(m.Version)).First();
                 // A custom module with the same id keeps its own line below, so it is never removed just by leaving this one unticked.
                 var have = _installed.FirstOrDefault(m => m.Id == entry.Id && m.Status == ModuleStatus.Official);
                 var custom = _installed.Any(m => m.Id == entry.Id && m.Status != ModuleStatus.Official);
@@ -159,18 +159,6 @@ internal sealed class ModulesPage : WizardPage
         }
 
         _list.EndUpdate();
-    }
-
-    private static bool Works(CatalogEntry entry, Version app)
-    {
-        try
-        {
-            return entry.WorksWithApp(app);
-        }
-        catch (Exception e) when (e is FormatException or ArgumentException or OverflowException)
-        {
-            return false;
-        }
     }
 
     private string? PickFile(string title)

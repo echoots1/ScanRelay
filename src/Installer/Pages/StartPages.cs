@@ -33,16 +33,16 @@ internal sealed class MaintenancePage : WizardPage
         AddText($"ScanRelay {model.State?.Version} is installed in {model.State?.Answers.InstallFolder}.");
 
         _modify = AddRadio("&Modify", chosen: true);
-        AddText("Add, update or remove printer modules, or change the folders, the share, the port, the web certificate or the printer account.").Margin = new Padding(22, 0, 3, 8);
+        AddNote("Add, update or remove printer modules, or change the folders, the share, the port, the web certificate or the printer account.", 8);
 
         _repair = AddRadio("&Repair", chosen: false);
-        AddText("Put everything back as setup made it: program files, rights, the account, the share, certificates and the service. Settings and scans are kept.").Margin = new Padding(22, 0, 3, 3);
+        AddNote("Put everything back as setup made it: program files, rights, the account, the share, certificates and the service. Settings and scans are kept.");
         _reopen = AddCheck("Reopen the local &setup screen (use this when nobody can sign in to the admin screen)", ticked: false, indent: 19);
         _renew = AddCheck("Renew the &Graph certificate (it must then be uploaded again in the admin screen)", ticked: false, indent: 19);
         _renew.Margin = new Padding(22, 3, 3, 8);
 
         _remove = AddRadio("&Uninstall", chosen: false);
-        AddText("Remove ScanRelay from this server. You are asked whether to keep the data folder.").Margin = new Padding(22, 0, 3, 3);
+        AddNote("Remove ScanRelay from this server. You are asked whether to keep the data folder.");
 
         _repair.CheckedChanged += (_, _) => EnableOptions();
         EnableOptions();
@@ -96,7 +96,6 @@ internal sealed class UpdatePage : WizardPage
 
     public override bool CanGoNext => _checked;
 
-    public override bool IsWorking => false;
 
     public override async void Entering()
     {

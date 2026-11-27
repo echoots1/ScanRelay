@@ -91,7 +91,7 @@ public sealed class InstalledState
     [SupportedOSPlatform("windows")]
     public static InstalledState? Detect()
     {
-        using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var hklm = WindowsSteps.OpenMachineKey();
         using var key = hklm.OpenSubKey(UninstallKey);
         if (key?.GetValue("InstallLocation") is not string folder || !Directory.Exists(folder)) return null;
 

@@ -32,8 +32,7 @@ public sealed class SetupEnvironment
 public sealed record CertificateChoice(string Subject, DateTime Expires, string Thumbprint);
 
 /// <param name="Warnings">Things that did not stop setup but that the admin should read.</param>
-/// <param name="LocalUrl">Where the first-run screen is, on the server itself.</param>
-public sealed record SetupResult(IReadOnlyList<string> Warnings, string LocalUrl);
+public sealed record SetupResult(IReadOnlyList<string> Warnings);
 
 /// <summary>
 /// Installs, repairs, updates and removes ScanRelay. It has no windows of its own: the
@@ -246,7 +245,7 @@ public sealed class SetupEngine(SetupEnvironment environment)
         }
     }
 
-    /// <summary>The certificates an admin could pick for the admin screen: those in the machine store with a private key.</summary>
+    /// <summary>The certificates an admin could pick for the admin screen: those in the machine store with a private key, leaving out the two setup makes itself.</summary>
     [SupportedOSPlatform("windows")]
     public static IReadOnlyList<CertificateChoice> ListWebCertificates()
     {
@@ -362,7 +361,6 @@ public sealed class SetupEngine(SetupEnvironment environment)
                 WindowsSteps.MoveFolder(log, oldData, a.DataFolder);
             }
 
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[1], ct, () =>
@@ -408,7 +406,6 @@ public sealed class SetupEngine(SetupEnvironment environment)
             }
 
             Directory.CreateDirectory(a.ModulesFolder);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[2], ct, () =>
@@ -416,7 +413,6 @@ public sealed class SetupEngine(SetupEnvironment environment)
             foreach (var name in new[] { "", "Inbox", "Store", "Logs", "Keys", "Backups" }) Directory.CreateDirectory(Path.Combine(a.DataFolder, name));
             log.Line($"The data folder {a.DataFolder} has Inbox, Store, Logs, Keys and Backups.");
             WindowsSteps.SecureDataFolder(log, a.DataFolder);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[3], ct, () =>
@@ -427,7 +423,6 @@ public sealed class SetupEngine(SetupEnvironment environment)
             }
 
             protectedPassword = WindowsSteps.EnsurePrinterAccount(log, a.PrinterAccount, previousConfig);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[4], ct, async () =>
@@ -448,7 +443,6 @@ public sealed class SetupEngine(SetupEnvironment environment)
             // Done after the modules step, because the rights depend on what is now installed.
             var rights = InboxRights.For(modules.ShareRights());
             WindowsSteps.SetInboxRights(log, Path.Combine(a.DataFolder, "Inbox"), WindowsSteps.AccountSid(a.PrinterAccount), rights);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[6], ct, () =>
@@ -461,14 +455,12 @@ public sealed class SetupEngine(SetupEnvironment environment)
             }
 
             WindowsSteps.ShareInbox(log, a.ShareName, inbox, WindowsSteps.AccountSid(a.PrinterAccount), ours);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[7], ct, () =>
         {
             graphThumbprint = EnsureGraphCertificate(log, a, state?.GraphCertThumbprint ?? previousConfig?.GraphCertThumbprint, now);
             (webThumbprint, webMadeBySetup) = EnsureWebCertificate(log, a, state, previousConfig, now);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[8], ct, () =>
@@ -478,20 +470,17 @@ public sealed class SetupEngine(SetupEnvironment environment)
             config.ModulesFolder = a.ModulesFolder;
             WindowsSteps.WriteInstallFile(log, a.InstallFolder, config);
             if (a.ReopenSetup) log.Line("The local setup screen will be open when the service starts.");
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[9], ct, () =>
         {
             WindowsSteps.RegisterService(log, a.InstallFolder);
             WindowsSteps.SecureProgramFolder(log, a.InstallFolder);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[10], ct, () =>
         {
             WindowsSteps.SetFirewallRule(log, a.AddFirewallRule, a.Port);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[11], ct, () =>
@@ -510,7 +499,6 @@ public sealed class SetupEngine(SetupEnvironment environment)
             log.Line($"Saved the answers for Modify and Repair in {Path.Combine(a.InstallFolder, InstalledState.FileName)}. There are no secrets in them.");
             WindowsSteps.RegisterInstalledApp(log, a.InstallFolder, Version);
             WindowsSteps.SetEverydayUse(log, a.InstallFolder, a.LocalUrl, a.DesktopShortcut, a.TrayIcon);
-            return Task.CompletedTask;
         });
 
         await StepAsync(log, InstallSteps[12], ct, async () =>
@@ -524,7 +512,7 @@ public sealed class SetupEngine(SetupEnvironment environment)
 
         log.Line($"ScanRelay {Version} is installed and running. The admin screen is at {a.Url} (on this server: {a.LocalUrl}).");
         if (log.Warnings.Count > 0) log.Line($"Finished with {log.Warnings.Count} warning(s). They are listed above.");
-        return new SetupResult([.. log.Warnings], a.LocalUrl);
+        return new SetupResult([.. log.Warnings]);
     }
 
     [SupportedOSPlatform("windows")]
@@ -677,8 +665,16 @@ public sealed class SetupEngine(SetupEnvironment environment)
         }
 
         log.Line("ScanRelay has been removed.");
-        return new SetupResult([.. log.Warnings], "");
+        return new SetupResult([.. log.Warnings]);
     }
+
+    /// <summary>A step that has nothing to wait for.</summary>
+    private static Task StepAsync(SetupLog log, string name, CancellationToken ct, Action work) =>
+        StepAsync(log, name, ct, () =>
+        {
+            work();
+            return Task.CompletedTask;
+        });
 
     private static async Task StepAsync(SetupLog log, string name, CancellationToken ct, Func<Task> work)
     {
