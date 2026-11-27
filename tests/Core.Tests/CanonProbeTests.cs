@@ -25,7 +25,7 @@ public sealed class CanonProbeTests : IAsyncLifetime
     }
 
     private Task<int> RunAsync(params string[] more) =>
-        CanonProbeProgram.Main([_printer.Address.Replace("http://", ""), "--plain", "--id", _printer.ManagerId, "--out", _folder, .. more]);
+        CanonProbeProgram.Main([_printer.Address.Replace("http://", ""), "--plain", "--id", _printer.ManagerId, "--out", Path.Combine(_folder, "not-made-yet"), .. more]);
 
     [Fact]
     public async Task A_load_is_built_from_the_saved_copy_and_never_starts_with_an_export()
@@ -46,6 +46,6 @@ public sealed class CanonProbeTests : IAsyncLifetime
         Assert.Equal(0, await RunAsync("--restore"));
         Assert.Equal(before, _printer.Entries);
         Assert.Equal(exports, _printer.Exports);
-        Assert.DoesNotContain("the-share-password", await File.ReadAllTextAsync(Path.Combine(_folder, "canon-probe-report.txt")));
+        Assert.DoesNotContain("the-share-password", await File.ReadAllTextAsync(Path.Combine(_folder, "not-made-yet", "canon-probe-report.txt")));
     }
 }

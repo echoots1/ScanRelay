@@ -52,6 +52,7 @@ public static partial class CanonProbeProgram
 
         string? Option(string name) => Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         var outFolder = Option("--out") ?? ".";
+        Directory.CreateDirectory(outFolder);
         (Report, SavedBook, SavedKey) = (Path.Combine(outFolder, "canon-probe-report.txt"), Path.Combine(outFolder, "canon-probe-saved.dcm"), Path.Combine(outFolder, "canon-probe-saved.key"));
         var id = Option("--id");
         if (id is null)
