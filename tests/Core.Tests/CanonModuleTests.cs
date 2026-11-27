@@ -57,6 +57,8 @@ public sealed class CanonModuleTests : IAsyncLifetime
         Assert.True(data.Unofficial);
         Assert.Contains("named exactly \"ScanRelay\"", data.Method);
         Assert.True(data.MatchesWindowsName("Canon MF642C/643C/644C UFR II"));
+        Assert.True(data.MatchesWindowsName("Canon MF650C Series UFR II"));
+        Assert.Contains("MF650C Series", data.Models);
         Assert.Equal(["10.05"], data.TestedFirmware);
     }
 

@@ -8,7 +8,7 @@ added.
 | `scanrelay-sample` | The mock printer in `/tests/MockDevices` | Built and tested. It exists to prove the module system and to be copied. It drives no real printer. |
 | `kyocera-ecosys` | ECOSYS M8124cidn | **Working on a real printer.** A sync pushed the list, a scan at the panel reached OneDrive. See below. |
 | Brother | — | **Dropped from the first version.** No Brother that scans is in use. |
-| `canon-imageclass` | imageCLASS MF642C first, then MF650C and MF751Cdw II | **Reading and loading work on a real MF642C from the probe tool. A push from the app, and a scan with the copied password, are not confirmed yet.** See below. |
+| `canon-imageclass` | imageCLASS MF642C/643C/644C and MF650C Series; MF751Cdw II not tried yet | **Reading and loading work on a real MF642C from the probe tool. A push from the app, and a scan with the copied password, are not confirmed yet.** See below. |
 
 ## The first printers
 
@@ -158,12 +158,13 @@ Work has started with the MF642C.
   first, so the kept password can still be loaded, and keeps it when the
   entry is no longer on the printer. To change the share password, make the
   `ScanRelay` entry again with the new one and read again.
-- **MF650C series: the pages match, nothing is proven.** Its Login, Export and
-  Import pages have the same addresses, field names, upload script and error
-  codes as the MF642C's. A first sign-in from the probe was refused; why is
-  not known yet (the printer's reason code was not captured). Whether its
-  exported file has the same layout is also not known. It is not listed in
-  the module's models until a read and a load have worked on one.
+- **MF650C Series: read and load work on a real one,** run with
+  `tools/CanonProbe`. Its pages, its file layout and its load flow are the
+  same as the MF642C's. It answered on http only until TLS was turned on for
+  its Remote UI; over http the module value `secure` must be `false`, and the
+  System Manager PIN and the export cross the network unencrypted, so TLS is
+  the better setting. A first sign-in was refused when tried over the wrong
+  one of the two. Its firmware version was not recorded.
 - **A load that works ends with the printer saying it is restarting.**
 - **A load that is refused because the printer is busy is asked again** every
   15 seconds for up to 3 minutes, which covers a push straight after a read

@@ -1,9 +1,9 @@
 id: canon-imageclass
-version: 0.2.1
+version: 0.2.2
 vendor: Canon
 family: imageCLASS MF
-models: [MF642C, MF643C, MF644C]    # the MF642C/643C/644C share one Remote UI
-windows_names: ["Canon MF642C*", "Canon MF643C*", "Canon MF644C*", "Canon MF640C*"]
+models: [MF642C, MF643C, MF644C, MF650C Series]    # as the printers name themselves; the MF642C/643C/644C share one Remote UI
+windows_names: ["Canon MF642C*", "Canon MF643C*", "Canon MF644C*", "Canon MF640C*", "Canon MF650C*", "Canon MF651C*", "Canon MF652C*", "Canon MF653C*", "Canon MF654C*", "Canon MF655C*", "Canon MF656C*", "Canon MF657C*"]
 status: official
 sdk_version: 1
 app_versions:
@@ -27,7 +27,7 @@ address_book:
   max_entries: null                 # not known yet
   one_touch: false
 prerequisites: []
-tested_firmware: ["10.05"]          # MF642C main controller; read and load run with tools/CanonProbe
+tested_firmware: ["10.05"]          # MF642C main controller. An MF650C Series was read and loaded too; its firmware version was not recorded
 options:
   secure: "true"                    # false talks plain HTTP
   template_name: "ScanRelay"
