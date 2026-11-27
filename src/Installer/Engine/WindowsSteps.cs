@@ -83,6 +83,58 @@ internal static class WindowsSteps
         log.Line("Stopped the ScanRelay service.");
     }
 
+    /// <summary>
+    /// Windows reports the service as stopped a little before its program has finished closing,
+    /// and until it has, its files cannot be replaced. This waits for the program itself to be gone.
+    /// </summary>
+    public static void WaitForServiceProgramToClose(SetupLog log, string installFolder)
+    {
+        var exe = Path.Combine(installFolder, ServiceExe);
+        var watch = Stopwatch.StartNew();
+        var waited = false;
+        while (true)
+        {
+            var running = new List<Process>();
+            foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(ServiceExe)))
+            {
+                try
+                {
+                    if (process.MainModule?.FileName is { } path && SamePath(path, exe)) running.Add(process);
+                    else process.Dispose();
+                }
+                catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                {
+                    process.Dispose();
+                }
+            }
+
+            if (running.Count == 0) break;
+            waited = true;
+            if (watch.Elapsed > TimeSpan.FromSeconds(30))
+            {
+                // The service has been told to stop and said it had. What is left is a program that will not go by itself.
+                foreach (var process in running)
+                {
+                    try
+                    {
+                        process.Kill();
+                        process.WaitForExit(10000);
+                    }
+                    catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                    {
+                    }
+                }
+
+                log.Line("The ScanRelay service's program was still running 30 seconds after the service stopped, so it was ended.");
+            }
+
+            foreach (var process in running) process.Dispose();
+            Thread.Sleep(500);
+        }
+
+        if (waited) log.Line($"Waited {watch.Elapsed.TotalSeconds:0.0} seconds for the ScanRelay service's program to finish closing.");
+    }
+
     public static void RegisterService(SetupLog log, string installFolder)
     {
         var exe = Path.Combine(installFolder, ServiceExe);
@@ -213,7 +265,9 @@ internal static class WindowsSteps
     {
         var root = Path.GetFullPath(folder).TrimEnd('\\') + "\\";
         var count = 0;
-        using var zip = new ZipArchive(payload, ZipArchiveMode.Read);
+        // The stream is left open and read from its start, so the copy can be tried again from the same payload.
+        if (payload.CanSeek) payload.Position = 0;
+        using var zip = new ZipArchive(payload, ZipArchiveMode.Read, leaveOpen: true);
         foreach (var entry in zip.Entries)
         {
             var relative = entry.FullName.Replace('/', '\\').TrimStart('\\');
@@ -942,6 +996,9 @@ internal static class WindowsSteps
     private static bool SameDrive(string a, string b) =>
         string.Equals(Path.GetPathRoot(Path.GetFullPath(a)), Path.GetPathRoot(Path.GetFullPath(b)), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>How long to wait before each further try at a file, in milliseconds. Tests shorten it.</summary>
+    internal static int[] RetryWaits { get; set; } = [500, 1000, 2000, 3000, 5000, 8000, 10000];
+
     /// <summary>A file the stopped service had open can stay locked for a moment, so file work gets a few tries.</summary>
     private static void Retry(string doing, Action action)
     {
@@ -954,8 +1011,9 @@ internal static class WindowsSteps
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
-                if (attempt == 5) throw new SetupException($"Failed {doing}: {e.Message} Close anything that has the file open and run setup again.", e);
-                Thread.Sleep(1000);
+                // About half a minute in all: a virus scanner or a program that is still closing can hold a file that long.
+                if (attempt > RetryWaits.Length) throw new SetupException($"Failed {doing}: {e.Message} Close anything that has the file open and run setup again.", e);
+                Thread.Sleep(RetryWaits[attempt - 1]);
             }
         }
     }

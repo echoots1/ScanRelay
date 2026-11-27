@@ -386,9 +386,27 @@ public sealed class SetupEngine(SetupEnvironment environment)
             previousConfig = InstallFile.Read(a.InstallFolder);
             WindowsSteps.CloseTrayIcons(log, a.InstallFolder);
             if (was is not null && !WinPath.Same(was.InstallFolder, a.InstallFolder)) WindowsSteps.CloseTrayIcons(log, was.InstallFolder);
-            WindowsSteps.ClearProgramFolder(log, a.InstallFolder, setupExe);
-            WindowsSteps.ExtractPayload(log, payload, a.InstallFolder);
-            WindowsSteps.CopySetupExe(log, setupExe, a.InstallFolder);
+            WindowsSteps.WaitForServiceProgramToClose(log, a.InstallFolder);
+
+            // Each file already gets several tries. If one still cannot be written, the whole copy is tried once
+            // more after a pause: whatever held it has usually let go by then, as running setup again shows.
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    WindowsSteps.ClearProgramFolder(log, a.InstallFolder, setupExe);
+                    WindowsSteps.ExtractPayload(log, payload, a.InstallFolder);
+                    WindowsSteps.CopySetupExe(log, setupExe, a.InstallFolder);
+                    break;
+                }
+                catch (SetupException e) when (attempt == 1 && e.InnerException is IOException or UnauthorizedAccessException)
+                {
+                    log.Line($"Copying the program files failed: {e.Message} Waiting 10 seconds and copying them all again, once.");
+                    Thread.Sleep(TimeSpan.FromSeconds(10));
+                    WindowsSteps.WaitForServiceProgramToClose(log, a.InstallFolder);
+                }
+            }
+
             Directory.CreateDirectory(a.ModulesFolder);
             return Task.CompletedTask;
         });
