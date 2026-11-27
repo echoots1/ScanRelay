@@ -14,8 +14,8 @@ Bug reports are welcome as issues. Security problems go through
 
 - No tenant IDs, host names, addresses or people's names in code, tests or
   samples.
-- No vendor software is included. Tools such as Brother's Mass Deployment Tool
-  are downloaded by the user.
+- No vendor software is included. A module that needs a vendor's tool names it
+  as a prerequisite, and the user downloads it.
 - Methods a vendor does not document are labelled unofficial in the module and
   in the docs.
 - Vendor and product names are used only to say what is supported.

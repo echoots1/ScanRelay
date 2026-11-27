@@ -11,5 +11,4 @@ scan files.
 
 ## Scope
 
-ScanRelay is in planning and has no releases yet. Once it does, fixes are made
-for the latest release only.
+Fixes are made for the latest release only.

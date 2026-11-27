@@ -5,7 +5,7 @@ printer. On 2026-11-23 a sync read an Entra group, pushed the list to a Kyocera
 ECOSYS M8124cidn, a document was scanned at the panel to a person's entry, and
 it arrived in that person's OneDrive. That is one printer model, one tenant and
 one person's scan; the rest of [the server test](server-test.md) has not been
-run. The Canon module is not started. [What is verified](#what-is-verified)
+run. Canon and Brother modules followed. [What is verified](#what-is-verified)
 says where each part stands, and [the overnight log](overnight-log.md) lists
 the questions answered along the way.
 
@@ -35,14 +35,14 @@ G1 and G2 are settled as follows.
   opens straight into the first-run steps with no sign-in at all. There is no
   setup password and no one-time code.
 - **The one sign-in is at the app registration step.** An Entra admin signs in
-  once, there, so setup can create the registration. Browser sign-in on the
-  server is offered first, link and code second, by-hand values third. It uses
+  once, there, so setup can create the registration. A link and a code are
+  offered first, entering the values by hand second. It uses
   the Microsoft Graph Command Line Tools public client. Setup keeps nothing
   from that sign-in.
 - **What protects the open screen** is the spec's existing rule: until sign-in
   is set up, the screen answers only on the server itself. Anyone who can
   reach it is already logged on to the server.
-- **The open window closes for good** once the admin group is chosen and one
+- **The open window closes** once the admin group is chosen and one
   member of it has signed in successfully. From then on every page needs
   Entra sign-in. Requiring that first successful sign-in before closing the
   window means a wrong group cannot lock everyone out.
@@ -97,8 +97,8 @@ we think the printer wants. Only a real machine proves the printer agrees.
 Nothing about one tenant, network or printer fleet is built in. Anything that
 differs between organisations is a setting, with a safe default, including the
 alert mailbox. Restricting `Mail.Send` to that mailbox is done by the
-organisation in Exchange Online, so setup explains how and the health check
-reports whether it is in place, but the app works either way.
+organisation in Exchange Online, so setup explains how. The health check says
+it cannot see whether that is in place, and the app works either way.
 
 ## 3. Milestones
 
@@ -112,9 +112,9 @@ These follow the spec's build order.
 | M3. People and sync | Built and tested: groups, manual people, exclusions, folders, preview, change guard, Runs and People pages. |
 | M4. Module system | Built and tested with the sample module and mock printer: SDK, packaging, signing, catalog, module host, Printers and Modules pages, update check, drift check. |
 | M5. Kyocera module | **Working on a real ECOSYS M8124cidn** (firmware 2P4_S000.002.204): sync, push, scan at the panel, file in OneDrive. Not yet tried: joiners and leavers over time, the drift check, and sign-in to the printer's service. See [modules](modules/README.md). |
-| M6. Brother module | **Dropped from the first version.** No Brother that scans is in use. |
-| M7. Canon module | **Built against a mock; not yet run against a printer.** First model: imageCLASS MF642C. The file formats come from real exports and the requests from the real Remote UI pages. See [modules](modules/README.md). |
-| M8. Public release | Docs, module template, mock devices, build checks and the release pipeline are in place. No release has been made. The signing key does not exist yet; see [releasing](releasing.md). |
+| M6. Brother module | The Brother printer line was dropped: none that scans is in use. **A module for the Brother ADS-4900W scanner was added later** and has saved, scanned to and cleared a profile on a real one (main firmware 3.20). See [modules](modules/README.md). |
+| M7. Canon module | **Reading and loading an address book work on a real imageCLASS MF642C and an MF650C Series**, run with the probe tool. A scan to an entry with the copied password has not been confirmed. See [modules](modules/README.md). |
+| M8. Public release | Docs, module template, mock devices, build checks and the release pipeline are in place. Releases are made from the pipeline and their modules are signed; modules can also be published between releases. See [releasing](releasing.md). |
 
 <a id="what-is-verified"></a>
 ## What is verified
@@ -132,10 +132,10 @@ server, tenant and printer, at least once.
 | Directory sync, change guard, drift check | Tested against the mocks. **Real:** a sync read a real group and created people; a member with a locked OneDrive is skipped. | The change guard, joiners and leavers, and the drift check on the real tenant. |
 | Module system | The sample module is packed, signed, installed, loaded and pushed to the mock printer in tests. **Real:** the Kyocera module was installed from a file as a custom module and pushed to a real printer. | An official, signed module installed from GitHub. |
 | Admin screen | A browser test walks through setup, a printer, a sync, a scan, a failure, the change guard and the Helpdesk role | Nobody has used it by hand. |
-| Installer | On every change a Windows Server build machine installs it silently and runs 56 checks: the service and its account, HTTPS, the setup gate, folder rights, both certificates, the printer account and its sign-in denials, the share, the firewall rule, Installed apps, a custom module loading, a repair that keeps the certificate and password, and a clean uninstall | The wizard screens: nobody has looked at them or clicked through them. Modify and Update through the screens. Moving folders. A real server with real policies. |
+| Installer | On every change a Windows Server build machine installs it silently and runs its checks (over 60): the service and its account, HTTPS, the setup gate, folder rights, both certificates, the printer account and its sign-in denials, the share, the firewall rule, Installed apps, a custom module loading, a repair that keeps the certificate and password, and a clean uninstall | The wizard screens: nobody has looked at them or clicked through them. Modify and Update through the screens. Moving folders. A real server with real policies. |
 | The share's rights | On the same build machine the test connects to the share as the printer account: writing a scan works; listing, reading back and deleting are refused; the service then picks the file up | A real printer. Many printers probe a folder before writing, and may need more than create and write. |
 | Alert emails | Tests check what is sent and to whom | Delivery through a real mailbox. |
-| Vendor modules | **Kyocera ECOSYS M8124cidn: real.** A push put people on the printer and a scan from the panel reached OneDrive. | Other Kyocera models. Canon is not built. Brother is dropped. |
+| Vendor modules | **Kyocera ECOSYS M8124cidn: real.** A push put people on the printer and a scan from the panel reached OneDrive. | Other Kyocera models. Canon and Brother ADS: proven from the probe tools, see [modules](modules/README.md); a scan with Canon's copied password is not confirmed. |
 
 The checklist for a real server is [server-test.md](server-test.md).
 
@@ -154,7 +154,7 @@ From the spec, with a recommendation where there is one.
 | Module signing key: who holds it, where | **Decided:** a GitHub Actions secret, used only by the release pipeline. | Done |
 | Exact models and firmware of the first printers | To come. | M5 to M7 |
 | Kyocera: does the network service method work, and is it on by default | — | M5 |
-| Brother: does the tool cover scan-to-folder profiles; how many slots | — | M6 |
+| Brother: does the tool cover scan-to-folder profiles; how many slots | **Answered for the ADS-4900W scanner:** its own web pages are used, not a tool; 25 profile slots. | Done |
 | Canon: `direct` or `host`; which address list | — | M7 |
 
 G3, G4 and G9 are decided as proposed in section 1.

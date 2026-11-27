@@ -70,6 +70,10 @@ jobs:
           dotnet publish modules/kyocera/ecosys --configuration Release --output artifacts/kyocera
           dotnet run --project tools/ModuleTool --configuration Release -- pack artifacts/kyocera artifacts/packages
           if ($LASTEXITCODE -ne 0) { throw "Packing the Kyocera module failed." }
+      - name: Pack every module the way a release does
+        shell: pwsh
+        run: ./build/pack-modules.ps1 -Out artifacts/release-rehearsal
+
       - name: Install silently, check everything the installer promises, repair, uninstall
         shell: pwsh
         run: pwsh tests/windows/Test-Install.ps1 -Setup artifacts/installer/ScanRelaySetup.exe -Module (Get-ChildItem artifacts/modules/*.srmod).FullName

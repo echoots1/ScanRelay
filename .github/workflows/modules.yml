@@ -71,14 +71,7 @@ jobs:
         shell: pwsh
         run: |
           $tool = "tools/ModuleTool"
-          # The sample module drives a mock printer and is not shipped. A module with no module.yaml yet is still being built.
-          Get-ChildItem modules -Recurse -Filter *.csproj | Where-Object { $_.FullName -notmatch 'scanrelay[\\/]sample' -and (Test-Path (Join-Path $_.DirectoryName 'module.yaml')) } | ForEach-Object {
-            $out = "artifacts/modules/$($_.BaseName)"
-            dotnet publish $_.FullName --configuration Release --output $out
-            if ($LASTEXITCODE -ne 0) { throw "Publishing $($_.Name) failed." }
-            dotnet run --project $tool --configuration Release --no-build -- pack $out packed
-            if ($LASTEXITCODE -ne 0) { throw "Packing $($_.Name) failed." }
-          }
+          ./build/pack-modules.ps1 -Out packed
           dotnet run --project $tool --configuration Release --no-build -- publish-set packed published $env:APP
           if ($LASTEXITCODE -ne 0) { throw "The modules cannot be published as they are. The reason is above." }
           $changed = @(Get-Content published/changed.txt | Where-Object { $_ })

@@ -83,6 +83,8 @@ before 0.2.8 refuse a module that asks for a newer copy than they have. The
 module tool refuses to pack a module that would not load in the oldest app it
 names.
 
+Both pipelines build and pack the modules with `build/pack-modules.ps1`, and CI runs it on every change.
+
 What it will not do:
 
 - **Publish a module that needs a newer app than the latest release.** The

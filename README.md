@@ -1,8 +1,9 @@
 # ScanRelay
 
-> Status: **working end to end on one real server, tenant and printer** (a
-> Kyocera ECOSYS M8124cidn). Not yet released, and the full server test has not
-> been run. See [what is and is not verified](docs/plan.md#what-is-verified).
+> Status: **released and in use on one real server and tenant**, with a Kyocera
+> ECOSYS M8124cidn, Canon imageCLASS MF642C and MF650C Series, and a Brother
+> ADS-4900W scanner. The full server test has not been run. See
+> [what is and is not verified](docs/plan.md#what-is-verified).
 
 A person picks their name on the printer panel, scans, and the PDF lands in
 `Documents/Scans` in their own OneDrive.
