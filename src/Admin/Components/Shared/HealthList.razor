@@ -1,0 +1,12 @@
+@* The results of a health check, one line each. *@
+<ul class="plain">
+    @foreach (var item in Items)
+    {
+        var b = Badge.For(item.State);
+        <li><Badge Text="@b.Text" Kind="@b.Kind" /><strong>@item.Name</strong><span class="wrap">@item.Detail</span></li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public IEnumerable<HealthItem> Items { get; set; } = [];
+}

@@ -71,6 +71,9 @@ public abstract class PageBase : ComponentBase, IDisposable
         await SafeLoadAsync();
     }
 
+    /// <summary>Loads the page's data again, as after a search box or a filter changes.</summary>
+    protected Task ReloadAsync() => DoAsync(() => Task.CompletedTask);
+
     protected Task DoAsync(Func<Task> action, string? success = null) => DoAsync(
         async () =>
         {

@@ -22,8 +22,8 @@ public static class Schemes
 
 /// <summary>
 /// Until setup is finished the admin screen has no sign-in, so it answers only on the
-/// server itself. The window closes for good once a member of the admin group has signed in.
-/// An installer Repair can reopen it.
+/// server itself. The window closes once a member of the admin group has signed in. It opens
+/// again if the admin group is removed in Settings, or when an installer Repair asks for it.
 /// </summary>
 public sealed class SetupGate
 {

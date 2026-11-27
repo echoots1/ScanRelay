@@ -7,7 +7,7 @@
 <p class="lead">Who changed what, and when.</p>
 <Messages Notice="@Notice" Error="@Error" />
 
-<form @onsubmit="() => DoAsync(() => Task.CompletedTask)" @onsubmit:preventDefault class="toolbar">
+<form @onsubmit="ReloadAsync" @onsubmit:preventDefault class="toolbar">
     <input type="search" @bind="_search" placeholder="Person, action or target" aria-label="Search" />
     <button type="submit">Search</button>
 </form>
@@ -24,7 +24,7 @@
         </tbody>
     </table>
 </div>
-@if (_entries.Count == _take) { <p><button @onclick="() => { _take += 200; return DoAsync(() => Task.CompletedTask); }">Show more</button></p> }
+@if (_entries.Count == _take) { <p><button @onclick="() => { _take += 200; return ReloadAsync(); }">Show more</button></p> }
 
 @code {
     private List<AuditEntry> _entries = [];

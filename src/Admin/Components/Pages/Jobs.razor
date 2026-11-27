@@ -9,14 +9,14 @@
 
 <div class="toolbar">
     <label>Status
-        <select @bind="_status" @bind:after="ReloadAsync">
+        <select @bind="_status" @bind:after="SearchAsync">
             <option value="">All</option>
             <option value="Failed">Failed</option>
             <option value="Uploaded">Uploaded</option>
             <option value="Waiting">Waiting or uploading</option>
         </select>
     </label>
-    <form @onsubmit="ReloadAsync" @onsubmit:preventDefault style="display:flex;gap:8px">
+    <form @onsubmit="SearchAsync" @onsubmit:preventDefault style="display:flex;gap:8px">
         <input type="search" @bind="_search" placeholder="Person, file name or error" aria-label="Search" />
         <button type="submit">Search</button>
     </form>
@@ -114,16 +114,17 @@
 
     private bool _queryUsed;
 
-    private Task ReloadAsync()
+    /// <summary>A new filter or search starts again from the first page of results.</summary>
+    private Task SearchAsync()
     {
         _take = 50;
-        return DoAsync(() => Task.CompletedTask);
+        return ReloadAsync();
     }
 
     private Task MoreAsync()
     {
         _take += 100;
-        return DoAsync(() => Task.CompletedTask);
+        return ReloadAsync();
     }
 
     private Task RerunAsync(Guid id) => DoAsync(() => Pipeline.RerunAsync(id, Actor), "The job was re-run. Its new status is shown below.");

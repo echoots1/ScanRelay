@@ -134,7 +134,7 @@ public static class ServiceHost
                 statusCode: ok ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
         }).AllowAnonymous();
 
-        app.MapGet("/signin", async (HttpContext context, SettingsStore settings, string? returnUrl) =>
+        app.MapGet("/signin", async (SettingsStore settings, string? returnUrl) =>
         {
             var s = await settings.GetAsync();
             if (string.IsNullOrEmpty(s.TenantId) || string.IsNullOrEmpty(s.ClientId) || s.AdminGroupId is null) return Results.Redirect("/setup");
@@ -164,7 +164,7 @@ public static class ServiceHost
             if (job is null) return Results.NotFound();
             var path = pipeline.StorePath(job);
             if (job.FileDeletedUtc is not null || !File.Exists(path)) return Results.NotFound("The file is no longer on the server.");
-            await audit.WriteAsync(ToActor(user), "Scan file opened", id.ToString(), $"Folder {job.FolderName}");
+            await audit.WriteAsync(CurrentUser.ActorOf(user), "Scan file opened", id.ToString(), $"Folder {job.FolderName}");
             var contentType = Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase) ? "application/pdf" : "application/octet-stream";
             return Results.File(path, contentType, job.UploadedFileName is { Length: > 0 } name && Path.HasExtension(name) ? name : job.OriginalFileName);
         }).RequireAuthorization(Roles.Admin);
@@ -178,7 +178,7 @@ public static class ServiceHost
             var wanted = printer.Entries.Select(e => new WantedEntry(e.PersonId, e.DisplayName, e.Email)).OrderBy(e => e.DisplayName).ToList();
             var file = await printers.ExportAsync(printer, wanted);
             if (file is null) return Results.NotFound("This printer's module could not produce an import file.");
-            await audit.WriteAsync(ToActor(user), "Import file downloaded", printer.Name);
+            await audit.WriteAsync(CurrentUser.ActorOf(user), "Import file downloaded", printer.Name);
             return Results.File(file.Content, file.ContentType, file.FileName);
         }).RequireAuthorization(Roles.Admin);
 
@@ -190,7 +190,7 @@ public static class ServiceHost
                 return Results.Content(Pages.Simple(("Only on the server", "Setup opens on the server's own screen, so this only works in a browser on the server itself.", false)), "text/html; charset=utf-8", statusCode: 403);
             }
 
-            await audit.WriteAsync(ToActor(user), "Setup opened for modules");
+            await audit.WriteAsync(CurrentUser.ActorOf(user), "Setup opened for modules");
             return Results.Redirect("scanrelay-setup:modules");
         }).RequireAuthorization(Roles.Admin);
 
@@ -202,7 +202,7 @@ public static class ServiceHost
         app.MapGet("/files/settings-export", async (ClaimsPrincipal user, SettingsStore settings, AuditLog audit) =>
         {
             var json = await settings.ExportAsync();
-            await audit.WriteAsync(ToActor(user), "Settings exported");
+            await audit.WriteAsync(CurrentUser.ActorOf(user), "Settings exported");
             return Results.File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", "scanrelay-settings.json");
         }).RequireAuthorization(Roles.Admin);
     }
@@ -213,9 +213,6 @@ public static class ServiceHost
     /// <summary>True for a path on this site. Anything that a browser could read as another site is refused.</summary>
     public static bool IsLocalPath(string? url) =>
         url is { Length: > 0 } && url[0] == '/' && (url.Length == 1 || (url[1] != '/' && url[1] != '\\')) && !url.Any(char.IsControl);
-
-    public static Actor ToActor(ClaimsPrincipal user) =>
-        Guid.TryParse(user.FindFirstValue("oid"), out var id) ? new Actor(id, user.Identity?.Name ?? id.ToString()) : Actor.Setup;
 
     private static X509Certificate2 WebCertificate(InstallConfig install, string host)
     {

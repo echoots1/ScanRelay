@@ -22,11 +22,11 @@ public sealed class CurrentUser(AuthenticationStateProvider auth)
 {
     public async Task<ClaimsPrincipal> GetAsync() => (await auth.GetAuthenticationStateAsync()).User;
 
-    public async Task<Actor> ActorAsync()
-    {
-        var user = await GetAsync();
-        return Guid.TryParse(user.FindFirstValue("oid"), out var id) ? new Actor(id, user.Identity?.Name ?? id.ToString()) : Actor.Setup;
-    }
+    public async Task<Actor> ActorAsync() => ActorOf(await GetAsync());
+
+    /// <summary>Who a signed-in person is, for the audit log. Before sign-in is set up, everyone is "Setup".</summary>
+    public static Actor ActorOf(ClaimsPrincipal user) =>
+        Guid.TryParse(user.FindFirstValue("oid"), out var id) ? new Actor(id, user.Identity?.Name ?? id.ToString()) : Actor.Setup;
 
     public async Task<bool> IsAdminAsync() => (await GetAsync()).IsInRole(Roles.Admin);
 }
@@ -37,7 +37,7 @@ public sealed class CurrentUser(AuthenticationStateProvider auth)
 /// </summary>
 public sealed class LocalVisitor(Microsoft.AspNetCore.Http.IHttpContextAccessor accessor)
 {
-    /// <summary>The link that opens setup at its Modules step. The installer registers it on the server.</summary>
+    /// <summary>The address that opens setup at its Modules step. The service answers it by sending the browser to a link the installer registered on the server.</summary>
     public const string ModulesSetupPath = "/local/modules-setup";
 
     // Read once, when the page's connection is made: that request comes from the person's own browser.

@@ -50,13 +50,7 @@
         <p class="hint">Running the Entra setup again is safe. It finds the existing registration and repairs it.</p>
         @if (_health is not null)
         {
-            <ul class="plain">
-                @foreach (var item in _health)
-                {
-                    var b = Badge.For(item.State);
-                    <li><Badge Text="@b.Text" Kind="@b.Kind" /><strong>@item.Name</strong><span class="wrap">@item.Detail</span></li>
-                }
-            </ul>
+            <HealthList Items="_health" />
         }
     </div>
 
@@ -146,7 +140,7 @@
 
     <div class="toolbar">
         <button class="primary" disabled="@Busy" @onclick="SaveAsync">Save settings</button>
-        <button disabled="@Busy" @onclick="() => DoAsync(() => Task.CompletedTask)">Undo changes</button>
+        <button disabled="@Busy" @onclick="ReloadAsync">Undo changes</button>
     </div>
 
     <h2>Printer account</h2>

@@ -202,13 +202,7 @@
             <p class="hint">Until a member has signed in successfully, this screen stays open on the server itself. A wrong group therefore cannot lock everyone out.</p>
             @if (_finalHealth is not null)
             {
-                <ul class="plain">
-                    @foreach (var item in _finalHealth.Where(i => i.State != HealthState.Ok))
-                    {
-                        var b = Badge.For(item.State);
-                        <li><Badge Text="@b.Text" Kind="@b.Kind" /><strong>@item.Name</strong><span class="wrap">@item.Detail</span></li>
-                    }
-                </ul>
+                <HealthList Items="_finalHealth.Where(i => i.State != HealthState.Ok)" />
             }
             <div class="toolbar">
                 <a class="button primary" href="/signin?returnUrl=/setup%3Fstep%3Dfinish" data-enhance-nav="false">Sign in to finish</a>
@@ -264,8 +258,7 @@
         {
             try
             {
-                Tokens.Reset();
-                _missing = [.. AppRegistration.ApplicationPermissionNames.Except(await Cloud.GetGrantedPermissionsAsync())];
+                await FindMissingPermissionsAsync();
             }
             catch (CloudException)
             {
@@ -351,17 +344,15 @@
 
         await Store.UpdateAsync(s => s with { TenantId = tenant.ToString(), ClientId = client.ToString() }, Actor);
         await Audit.WriteAsync(Actor, "App registration entered by hand", client.ToString());
-        Tokens.Reset();
-        _missing = [.. AppRegistration.ApplicationPermissionNames.Except(await Cloud.GetGrantedPermissionsAsync())];
+        await FindMissingPermissionsAsync();
         _byHand = false;
         return null;
     }, "Saved. The service signed in with its certificate.");
 
     private Task CheckConsentAsync() => DoAsync(async () =>
     {
-        Tokens.Reset();
-        _missing = [.. AppRegistration.ApplicationPermissionNames.Except(await Cloud.GetGrantedPermissionsAsync())];
-        return _missing.Count == 0 ? null : "Not approved yet: " + string.Join(", ", _missing) + ".";
+        var missing = await FindMissingPermissionsAsync();
+        return missing.Count == 0 ? null : "Not approved yet: " + string.Join(", ", missing) + ".";
     }, "All permissions are approved.");
 
     private Task SaveAsync(Func<AppSettings, AppSettings> change) => DoAsync(() => Store.UpdateAsync(change, Actor));
@@ -385,5 +376,12 @@
     {
         _codeCancel?.Cancel();
         base.Dispose();
+    }
+
+    /// <summary>Asks Entra afresh which of the permissions ScanRelay needs have not been approved yet.</summary>
+    private async Task<IReadOnlyList<string>> FindMissingPermissionsAsync()
+    {
+        Tokens.Reset();
+        return _missing = [.. AppRegistration.ApplicationPermissionNames.Except(await Cloud.GetGrantedPermissionsAsync())];
     }
 }
