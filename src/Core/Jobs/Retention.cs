@@ -5,7 +5,10 @@ using ScanRelay.Core.Settings;
 
 namespace ScanRelay.Core.Jobs;
 
-/// <summary>Deletes processed files after the retention period, and job records after the history period.</summary>
+/// <summary>
+/// Deletes processed files after the retention period, and job records, run records and audit
+/// entries after the history period. Files in Store that no job knows are cleared away too.
+/// </summary>
 public sealed class Retention(
     IDbContextFactory<ScanRelayDbContext> factory,
     DataFolder data,

@@ -21,7 +21,7 @@ public sealed partial class ModuleData
     public List<string> WindowsNames { get; set; } = [];
 
     /// <summary>official or custom.</summary>
-    public string Status { get; set; } = "custom";
+    public string Status { get; set; } = ModuleStatus.Custom;
 
     /// <summary>The module SDK version it was built for.</summary>
     public int SdkVersion { get; set; } = 1;
@@ -104,7 +104,7 @@ public sealed partial class ModuleData
         if (!VersionPattern().IsMatch(Version)) p.Add("version must look like 1.0.0.");
         if (string.IsNullOrWhiteSpace(Vendor)) p.Add("vendor is required.");
         if (string.IsNullOrWhiteSpace(Family)) p.Add("family is required.");
-        if (Status is not ("official" or "custom")) p.Add("status must be official or custom.");
+        if (Status is not (ModuleStatus.Official or ModuleStatus.Custom)) p.Add("status must be official or custom.");
         if (SdkVersion < 1) p.Add("sdk_version must be 1 or more.");
         if (!VersionPattern().IsMatch(AppVersions.Min)) p.Add("app_versions.min must look like 1.0.0.");
         if (AppVersions.Max is not null && !VersionPattern().IsMatch(AppVersions.Max)) p.Add("app_versions.max must look like 1.0.0.");
@@ -133,17 +133,9 @@ public sealed partial class ModuleData
         };
     }
 
-    public bool MatchesWindowsName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return false;
-        return WindowsNames.Concat(Models).Any(pattern =>
-            pattern.EndsWith('*')
-                ? name.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase)
-                : name.Equals(pattern, StringComparison.OrdinalIgnoreCase));
-    }
+    public bool MatchesWindowsName(string? name) => ModuleRules.NameMatches(WindowsNames.Concat(Models), name);
 
-    public bool WorksWithApp(Version app) =>
-        System.Version.Parse(AppVersions.Min) <= app && (AppVersions.Max is null || app <= System.Version.Parse(AppVersions.Max));
+    public bool WorksWithApp(Version app) => ModuleRules.AppInRange(AppVersions.Min, AppVersions.Max, app);
 }
 
 public sealed class ModuleException(string message) : Exception(message);

@@ -38,14 +38,14 @@ public sealed class ModuleStore(string folder, TrustedKeys keys)
     {
         var data = ModulePackage.ReadData(packagePath);
         var official = keys.Verify(File.ReadAllBytes(packagePath), signatureBase64);
-        if (official) return (data, "official");
+        if (official) return (data, ModuleStatus.Official);
         if (signatureBase64 is not null && !allowCustom)
         {
             throw new ModuleException($"The package for {data.Id} has been altered or is not signed by this project. It was not installed.");
         }
 
         if (!allowCustom) throw new ModuleException($"The package for {data.Id} is not signed by this project.");
-        return (data, "custom");
+        return (data, ModuleStatus.Custom);
     }
 
     /// <summary>Installs or replaces a module. Called by the installer, which has administrator rights.</summary>
@@ -61,7 +61,7 @@ public sealed class ModuleStore(string folder, TrustedKeys keys)
         }
 
         var sigPath = target + ModulePackage.SignatureExtension;
-        if (status == "official") File.WriteAllText(sigPath, signatureBase64);
+        if (status == ModuleStatus.Official) File.WriteAllText(sigPath, signatureBase64);
         else File.Delete(sigPath);
 
         var record = new InstalledModule(data.Id, data.Version, fileName, ModulePackage.Sha256(target), status, nowUtc);

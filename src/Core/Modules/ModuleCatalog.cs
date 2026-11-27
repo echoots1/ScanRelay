@@ -20,14 +20,9 @@ public sealed record CatalogEntry(
     [property: JsonPropertyName("unofficial")] bool Unofficial,
     [property: JsonPropertyName("prerequisites")] List<string> Prerequisites)
 {
-    public bool WorksWithApp(Version app) =>
-        System.Version.Parse(MinApp) <= app && (MaxApp is null || app <= System.Version.Parse(MaxApp));
+    public bool WorksWithApp(Version app) => ModuleRules.AppInRange(MinApp, MaxApp, app);
 
-    public bool Covers(string? windowsModelName) =>
-        !string.IsNullOrWhiteSpace(windowsModelName) && WindowsNames.Concat(Models).Any(pattern =>
-            pattern.EndsWith('*')
-                ? windowsModelName.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase)
-                : windowsModelName.Equals(pattern, StringComparison.OrdinalIgnoreCase));
+    public bool Covers(string? windowsModelName) => ModuleRules.NameMatches(WindowsNames.Concat(Models), windowsModelName);
 }
 
 public sealed record CatalogIndex(

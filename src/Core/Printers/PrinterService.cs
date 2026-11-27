@@ -113,12 +113,9 @@ public sealed class PrinterService(
             var since = printer.LastReachableUtc ?? printer.CreatedUtc;
             if (now - since < TimeSpan.FromHours(24)) continue;
             var key = $"unreachableAlert:{printer.Id}";
-            if (DateTime.TryParse(await settings.GetStateAsync(key, ct), null, System.Globalization.DateTimeStyles.RoundtripKind, out var last) && now - last < TimeSpan.FromHours(24))
-            {
-                continue;
-            }
+            if (await settings.GetStateTimeAsync(key, ct) is { } last && now - last < TimeSpan.FromHours(24)) continue;
 
-            await settings.SetStateAsync(key, now.ToString("o"), ct);
+            await settings.SetStateTimeAsync(key, now, ct);
             await alerts.RaiseAsync(AlertKind.PrinterUnreachable, $"{printer.Name} ({printer.Address}) has not answered since {since:u}. {probe.Error}", ct);
         }
     }

@@ -17,6 +17,9 @@ public sealed class DataFolder
     /// <summary>Where printers write. One folder per person, named with their user id.</summary>
     public string Inbox => Path.Combine(Root, "Inbox");
 
+    /// <summary>The folder one person's scans arrive in.</summary>
+    public string PersonInbox(Guid personId) => Path.Combine(Inbox, personId.ToString());
+
     /// <summary>Every processed file, uploaded or failed, named by job id.</summary>
     public string Store => Path.Combine(Root, "Store");
 

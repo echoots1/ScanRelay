@@ -40,7 +40,6 @@ public sealed class DirectorySync(
     ILogger<DirectorySync> logger)
 {
     private const string QuietSyncKey = "lastQuietSync";
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _noOneDrive = new();
 
@@ -50,12 +49,9 @@ public sealed class DirectorySync(
     public bool IsRunning => _oneAtATime.CurrentCount == 0;
 
     /// <summary>Runs a sync or a preview. Returns the run's id, or 0 for a scheduled sync that found nothing to change and so was not recorded.</summary>
-    public async Task<int> RunAsync(RunKind kind, RunTrigger trigger, Actor actor, CancellationToken ct = default)
-    {
-        await _oneAtATime.WaitAsync(ct);
-        try
+    public Task<int> RunAsync(RunKind kind, RunTrigger trigger, Actor actor, CancellationToken ct = default) =>
+        OneAtATimeAsync(async db =>
         {
-            await using var db = await factory.CreateDbContextAsync(ct);
             var held = await db.Runs.Where(r => r.Status == RunStatus.Held).ToListAsync(ct);
             if (kind == RunKind.Sync && held.Count > 0)
             {
@@ -65,21 +61,12 @@ public sealed class DirectorySync(
                 foreach (var old in held)
                 {
                     old.Status = RunStatus.Cancelled;
-                    old.FinishedUtc = time.GetUtcNow().UtcDateTime;
+                    old.FinishedUtc = NowUtc;
                     old.Detail = Describe(old.Detail, "Replaced by a newer sync.");
                 }
             }
 
-            var run = new Run
-            {
-                Kind = kind,
-                Trigger = trigger,
-                Status = RunStatus.Running,
-                StartedUtc = time.GetUtcNow().UtcDateTime,
-                Actor = trigger == RunTrigger.Manual ? actor.Name : null,
-            };
-            db.Runs.Add(run);
-            await db.SaveChangesAsync(ct);
+            var run = await StartRunAsync(db, kind, trigger, trigger == RunTrigger.Manual ? actor.Name : null, ct);
             Changed?.Invoke();
             await ExecuteAsync(db, run, approved: false, onlyPrinter: null, force: false, ct);
 
@@ -90,52 +77,38 @@ public sealed class DirectorySync(
             {
                 db.Runs.Remove(run);
                 await db.SaveChangesAsync(ct);
-                await settings.SetStateAsync(QuietSyncKey, time.GetUtcNow().UtcDateTime.ToString("o"), ct);
+                await settings.SetStateTimeAsync(QuietSyncKey, NowUtc, ct);
                 Changed?.Invoke();
                 return 0;
             }
 
             return run.Id;
-        }
-        finally
-        {
-            _oneAtATime.Release();
-        }
-    }
+        }, ct);
 
     /// <summary>When a scheduled sync last ran and found nothing to change. Such syncs are not listed as runs.</summary>
-    public async Task<DateTime?> LastQuietSyncAsync(CancellationToken ct = default) =>
-        DateTime.TryParse(await settings.GetStateAsync(QuietSyncKey, ct), null, System.Globalization.DateTimeStyles.RoundtripKind, out var when) ? when.ToUniversalTime() : null;
+    public Task<DateTime?> LastQuietSyncAsync(CancellationToken ct = default) => settings.GetStateTimeAsync(QuietSyncKey, ct);
 
     /// <summary>Lets a run the change guard stopped go ahead.</summary>
-    public async Task<string?> ApproveAsync(int runId, Actor actor, CancellationToken ct = default)
-    {
-        await _oneAtATime.WaitAsync(ct);
-        try
+    public Task<string?> ApproveAsync(int runId, Actor actor, CancellationToken ct = default) =>
+        OneAtATimeAsync(async db =>
         {
-            await using var db = await factory.CreateDbContextAsync(ct);
             var run = await db.Runs.FindAsync([runId], ct);
-            if (run is not { Status: RunStatus.Held }) return "That run is not waiting for approval.";
+            if (run is not { Status: RunStatus.Held }) return NotWaiting;
             run.Status = RunStatus.Running;
             run.Actor = actor.Name;
             await db.SaveChangesAsync(ct);
             await audit.WriteAsync(actor, "Sync approved", $"Run {runId}", ct: ct);
             await ExecuteAsync(db, run, approved: true, onlyPrinter: null, force: false, ct);
-            return null;
-        }
-        finally
-        {
-            _oneAtATime.Release();
-        }
-    }
+            return (string?)null;
+        }, ct);
 
     public async Task<string?> CancelAsync(int runId, Actor actor, CancellationToken ct = default)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
         var run = await db.Runs.FindAsync([runId], ct);
-        if (run is not { Status: RunStatus.Held }) return "That run is not waiting for approval.";
+        if (run is not { Status: RunStatus.Held }) return NotWaiting;
         run.Status = RunStatus.Cancelled;
-        run.FinishedUtc = time.GetUtcNow().UtcDateTime;
+        run.FinishedUtc = NowUtc;
         run.Actor = actor.Name;
         await db.SaveChangesAsync(ct);
         await audit.WriteAsync(actor, "Sync cancelled", $"Run {runId}", ct: ct);
@@ -144,25 +117,27 @@ public sealed class DirectorySync(
     }
 
     /// <summary>Pushes the full list to one printer now, whether or not it differs. Used by Push now and by re-running a failed push.</summary>
-    public async Task<int> PushPrinterAsync(int printerId, Actor actor, CancellationToken ct = default)
+    public Task<int> PushPrinterAsync(int printerId, Actor actor, CancellationToken ct = default) =>
+        OneAtATimeAsync(async db =>
+        {
+            var run = await StartRunAsync(db, RunKind.Sync, RunTrigger.Manual, actor.Name, ct);
+            await audit.WriteAsync(actor, "Push to printer", $"Printer {printerId}", ct: ct);
+            await ExecuteAsync(db, run, approved: true, onlyPrinter: printerId, force: true, ct);
+            return run.Id;
+        }, ct);
+
+    private const string NotWaiting = "That run is not waiting for approval.";
+
+    private DateTime NowUtc => time.GetUtcNow().UtcDateTime;
+
+    /// <summary>Syncs, approvals, pushes and the nightly check all change the same lists, so only one runs at a time.</summary>
+    private async Task<T> OneAtATimeAsync<T>(Func<ScanRelayDbContext, Task<T>> work, CancellationToken ct)
     {
         await _oneAtATime.WaitAsync(ct);
         try
         {
             await using var db = await factory.CreateDbContextAsync(ct);
-            var run = new Run
-            {
-                Kind = RunKind.Sync,
-                Trigger = RunTrigger.Manual,
-                Status = RunStatus.Running,
-                StartedUtc = time.GetUtcNow().UtcDateTime,
-                Actor = actor.Name,
-            };
-            db.Runs.Add(run);
-            await db.SaveChangesAsync(ct);
-            await audit.WriteAsync(actor, "Push to printer", $"Printer {printerId}", ct: ct);
-            await ExecuteAsync(db, run, approved: true, onlyPrinter: printerId, force: true, ct);
-            return run.Id;
+            return await work(db);
         }
         finally
         {
@@ -170,13 +145,19 @@ public sealed class DirectorySync(
         }
     }
 
-    /// <summary>Once a night: compares each printer that can be read back with the wanted list and repairs differences.</summary>
-    public async Task<int?> DriftCheckAsync(CancellationToken ct = default)
+    /// <summary>Records a run as started.</summary>
+    private async Task<Run> StartRunAsync(ScanRelayDbContext db, RunKind kind, RunTrigger trigger, string? actorName, CancellationToken ct)
     {
-        await _oneAtATime.WaitAsync(ct);
-        try
+        var run = new Run { Kind = kind, Trigger = trigger, Status = RunStatus.Running, StartedUtc = NowUtc, Actor = actorName };
+        db.Runs.Add(run);
+        await db.SaveChangesAsync(ct);
+        return run;
+    }
+
+    /// <summary>Once a night: compares each printer that can be read back with the wanted list and repairs differences.</summary>
+    public Task<int?> DriftCheckAsync(CancellationToken ct = default) =>
+        OneAtATimeAsync(async db =>
         {
-            await using var db = await factory.CreateDbContextAsync(ct);
             var all = await db.Printers.Include(p => p.Entries).ToListAsync(ct);
             Run? run = null;
             foreach (var printer in all)
@@ -188,29 +169,19 @@ public sealed class DirectorySync(
                     && actual.OrderBy(a => a.PersonId).Zip(wanted.OrderBy(w => w.PersonId)).All(pair => SameOnPrinter(pair.First, pair.Second));
                 if (same) continue;
 
-                if (run is null)
-                {
-                    run = new Run { Kind = RunKind.DriftCheck, Trigger = RunTrigger.Schedule, Status = RunStatus.Running, StartedUtc = time.GetUtcNow().UtcDateTime };
-                    db.Runs.Add(run);
-                    await db.SaveChangesAsync(ct);
-                }
+                run ??= await StartRunAsync(db, RunKind.DriftCheck, RunTrigger.Schedule, null, ct);
 
                 await PushAndRecordAsync(db, run, printer, wanted, ct);
             }
 
-            if (run is null) return null;
+            if (run is null) return (int?)null;
             run.Status = run.Pushes.Any(p => p.Status != PushStatus.Succeeded) ? RunStatus.Failed : RunStatus.Succeeded;
-            run.FinishedUtc = time.GetUtcNow().UtcDateTime;
+            run.FinishedUtc = NowUtc;
             run.Detail = Describe(null, $"{run.Pushes.Count} printer(s) did not match the wanted list and were repaired.");
             await db.SaveChangesAsync(ct);
             Changed?.Invoke();
             return run.Id;
-        }
-        finally
-        {
-            _oneAtATime.Release();
-        }
-    }
+        }, ct);
 
     public static (string? Message, SyncChanges? Changes) ReadDetail(string? detail)
     {
@@ -227,7 +198,7 @@ public sealed class DirectorySync(
     }
 
     private static string Describe(string? existing, string message, SyncChanges? changes = null) =>
-        JsonSerializer.Serialize(new StoredDetail(message, changes ?? ReadDetail(existing).Changes), Json);
+        JsonSerializer.Serialize(new StoredDetail(message, changes ?? ReadDetail(existing).Changes));
 
     private async Task ExecuteAsync(ScanRelayDbContext db, Run run, bool approved, int? onlyPrinter, bool force, CancellationToken ct)
     {
@@ -240,7 +211,7 @@ public sealed class DirectorySync(
                 return;
             }
 
-            var now = time.GetUtcNow().UtcDateTime;
+            var now = NowUtc;
             var allPrinters = await db.Printers.Include(p => p.Entries).ToListAsync(ct);
             var people = await db.People.Include(p => p.Printers).ToListAsync(ct);
 
@@ -256,37 +227,8 @@ public sealed class DirectorySync(
                 if (await cloud.GetUserAsync(id, ct) is { } user) candidates[id] = user;
             }
 
-            // Only enabled accounts with a OneDrive are included. Guests are skipped unless a setting turns them on.
-            var skipped = new List<string>();
             var known = people.Where(p => p.RemovedUtc is null).Select(p => p.Id).ToHashSet();
-            var excluded = people.Where(p => p.Excluded).Select(p => p.Id).ToHashSet();
-            var eligible = new Dictionary<Guid, DirectoryUser>();
-            foreach (var user in candidates.Values.OrderBy(u => u.DisplayName))
-            {
-                if (excluded.Contains(user.Id)) continue;
-                if (!user.Enabled || (user.IsGuest && !s.IncludeGuests)) continue;
-                if (!known.Contains(user.Id))
-                {
-                    // One person's OneDrive being missing, locked or otherwise unusable must not stop the sync for everyone else.
-                    string? reason = null;
-                    try
-                    {
-                        if (!await HasOneDriveAsync(user.Id, ct)) reason = "no OneDrive";
-                    }
-                    catch (CloudException e) when (!e.IsTransient)
-                    {
-                        reason = e.Status == 423 ? "their OneDrive is locked or blocked" : "their OneDrive could not be opened: " + e.Message;
-                    }
-
-                    if (reason is not null)
-                    {
-                        skipped.Add($"{user.DisplayName} ({reason})");
-                        continue;
-                    }
-                }
-
-                eligible[user.Id] = user;
-            }
+            var (eligible, skipped) = await FilterEligibleAsync(candidates.Values, people, known, s.IncludeGuests, ct);
 
             // 2. Work out the wanted state: one folder per person, and for each printer its full list.
             var wantedByPrinter = new Dictionary<int, List<WantedEntry>>();
@@ -350,7 +292,7 @@ public sealed class DirectorySync(
                 person.Email = user.Mail;
                 person.LastSeenUtc = now;
                 person.RemovedUtc = null;
-                Directory.CreateDirectory(Path.Combine(data.Inbox, user.Id.ToString()));
+                Directory.CreateDirectory(data.PersonInbox(user.Id));
             }
 
             foreach (var person in toRemove) person.RemovedUtc = now;
@@ -380,14 +322,55 @@ public sealed class DirectorySync(
         }
     }
 
+    /// <summary>
+    /// Who of the candidates gets a folder and a place on a printer. Only enabled accounts with a OneDrive
+    /// are included; guests are skipped unless a setting turns them on. The second list says who was left
+    /// out for want of a OneDrive, and why. Someone already known is not asked about again.
+    /// </summary>
+    private async Task<(Dictionary<Guid, DirectoryUser> Eligible, List<string> Skipped)> FilterEligibleAsync(
+        IEnumerable<DirectoryUser> candidates, List<Person> people, HashSet<Guid> known, bool includeGuests, CancellationToken ct)
+    {
+        var skipped = new List<string>();
+        var excluded = people.Where(p => p.Excluded).Select(p => p.Id).ToHashSet();
+        var eligible = new Dictionary<Guid, DirectoryUser>();
+        foreach (var user in candidates.OrderBy(u => u.DisplayName))
+        {
+            if (excluded.Contains(user.Id)) continue;
+            if (!user.Enabled || (user.IsGuest && !includeGuests)) continue;
+            if (!known.Contains(user.Id))
+            {
+                // One person's OneDrive being missing, locked or otherwise unusable must not stop the sync for everyone else.
+                string? reason = null;
+                try
+                {
+                    if (!await HasOneDriveAsync(user.Id, ct)) reason = "no OneDrive";
+                }
+                catch (CloudException e) when (!e.IsTransient)
+                {
+                    reason = e.Status == 423 ? "their OneDrive is locked or blocked" : "their OneDrive could not be opened: " + e.Message;
+                }
+
+                if (reason is not null)
+                {
+                    skipped.Add($"{user.DisplayName} ({reason})");
+                    continue;
+                }
+            }
+
+            eligible[user.Id] = user;
+        }
+
+        return (eligible, skipped);
+    }
+
     private async Task<bool> PushAndRecordAsync(ScanRelayDbContext db, Run run, Printer printer, List<WantedEntry> wanted, CancellationToken ct)
     {
-        var push = new Push { Run = run, Printer = printer, Status = PushStatus.Pending, StartedUtc = time.GetUtcNow().UtcDateTime };
+        var push = new Push { Run = run, Printer = printer, Status = PushStatus.Pending, StartedUtc = NowUtc };
         db.Pushes.Add(push);
         await db.SaveChangesAsync(ct);
 
         var outcome = await printers.PushAsync(printer, wanted, ct);
-        push.FinishedUtc = time.GetUtcNow().UtcDateTime;
+        push.FinishedUtc = NowUtc;
         push.Status = outcome.Succeeded ? PushStatus.Succeeded : outcome.Paused ? PushStatus.Paused : PushStatus.Failed;
         (push.Added, push.Updated, push.Removed, push.Error) = (outcome.Added, outcome.Updated, outcome.Removed, outcome.Error);
         if (outcome.Succeeded)
@@ -433,7 +416,7 @@ public sealed class DirectorySync(
     {
         foreach (var person in removed)
         {
-            var folder = Path.Combine(data.Inbox, person.Id.ToString());
+            var folder = data.PersonInbox(person.Id);
             try
             {
                 if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
@@ -463,7 +446,7 @@ public sealed class DirectorySync(
     {
         run.Status = status;
         run.Detail = Describe(run.Detail, message, changes);
-        if (finished) run.FinishedUtc = time.GetUtcNow().UtcDateTime;
+        if (finished) run.FinishedUtc = NowUtc;
         await db.SaveChangesAsync(ct);
         Changed?.Invoke();
     }

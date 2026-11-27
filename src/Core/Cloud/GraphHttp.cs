@@ -68,6 +68,12 @@ public sealed class GraphHttp(HttpClient http, string baseUrl, Func<Cancellation
             },
             authenticated: true,
             ct);
+        return await ReadJsonAsync(response, ct);
+    }
+
+    /// <summary>The answer's body as a JSON object. An empty body, as Graph sends for "done, nothing to say", is an empty object.</summary>
+    public static async Task<JsonObject> ReadJsonAsync(HttpResponseMessage response, CancellationToken ct)
+    {
         var text = await response.Content.ReadAsStringAsync(ct);
         return string.IsNullOrWhiteSpace(text) ? [] : JsonNode.Parse(text)!.AsObject();
     }

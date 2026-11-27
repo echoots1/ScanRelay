@@ -25,8 +25,6 @@ public sealed class GraphCertificate(InstallConfig install, DataFolder dataFolde
     /// <summary>The public half, as Entra wants it when uploaded by hand or by setup.</summary>
     public string PublicKeyBase64() => Convert.ToBase64String(Get().Export(X509ContentType.Cert));
 
-    public string PublicKeyPem() => Get().ExportCertificatePem();
-
     private X509Certificate2 Load()
     {
         if (!string.IsNullOrWhiteSpace(install.GraphCertThumbprint))

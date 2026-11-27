@@ -129,8 +129,8 @@ internal sealed class ModulesPage : WizardPage
             {
                 var entry = group.OrderByDescending(m => Version.TryParse(m.Version, out var v) ? v : new Version(0, 0)).First();
                 // A custom module with the same id keeps its own line below, so it is never removed just by leaving this one unticked.
-                var have = _installed.FirstOrDefault(m => m.Id == entry.Id && m.Status == "official");
-                var custom = _installed.Any(m => m.Id == entry.Id && m.Status != "official");
+                var have = _installed.FirstOrDefault(m => m.Id == entry.Id && m.Status == ModuleStatus.Official);
+                var custom = _installed.Any(m => m.Id == entry.Id && m.Status != ModuleStatus.Official);
                 var note = custom ? "  -  ticking this replaces the custom module of the same name"
                     : have is null ? ""
                     : have.Version == entry.Version ? "  -  installed"
@@ -143,7 +143,7 @@ internal sealed class ModulesPage : WizardPage
 
         foreach (var have in _installed.Where(m => !listed.Contains(m.Id)).OrderBy(m => m.Id, StringComparer.Ordinal))
         {
-            var why = have.Status != "official" ? "custom, not checked by the project"
+            var why = have.Status != ModuleStatus.Official ? "custom, not checked by the project"
                 : _catalog is null ? "official"
                 : "official, but the list has no version of it for this release";
             items.Add((new Item(have.Id, $"{have.Id} {have.Version}  -  installed ({why}); untick to remove", Source.InstalledOnly, true), true));

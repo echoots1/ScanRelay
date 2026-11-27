@@ -30,7 +30,7 @@ public sealed record ModulePlan(IReadOnlyList<CatalogEntry> Downloads, IReadOnly
         var problems = new List<string>();
 
         var targets = requested
-            .Concat(appUpdate ? installed.Where(m => m.Status == "official").Select(m => m.Id) : [])
+            .Concat(appUpdate ? installed.Where(m => m.Status == ModuleStatus.Official).Select(m => m.Id) : [])
             .Except(removing)
             .Except(fromFiles)
             .Distinct()
@@ -60,7 +60,7 @@ public sealed record ModulePlan(IReadOnlyList<CatalogEntry> Downloads, IReadOnly
                 continue;
             }
 
-            var current = have is not null && have.Status == "official" && !damaged.Contains(id)
+            var current = have is not null && have.Status == ModuleStatus.Official && !damaged.Contains(id)
                 && ParseVersion(have.Version) >= ParseVersion(best.Version);
             if (!current) downloads.Add(best);
         }

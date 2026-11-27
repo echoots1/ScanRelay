@@ -62,7 +62,7 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
             if (!File.Exists(file)) throw new SetupException($"The module file {file} was not found.");
             var module = Guarded(file, () => _store.Install(file, null, allowCustom: true, time.GetUtcNow().UtcDateTime));
             log.Line($"Installed the module {module.Id} {module.Version} from {file} as {module.Status}."
-                + (module.Status == "official" ? "" : " It is not from the project and has not been checked by it."));
+                + (module.Status == ModuleStatus.Official ? "" : " It is not from the project and has not been checked by it."));
             ids.Add(module.Id);
         }
 
@@ -85,7 +85,7 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
     {
         var installed = Installed;
         var damaged = FindDamaged(installed);
-        if (requested.Count == 0 && !(appUpdate && installed.Any(m => m.Status == "official"))) return;
+        if (requested.Count == 0 && !(appUpdate && installed.Any(m => m.Status == ModuleStatus.Official))) return;
 
         var missing = requested.Except(fromFiles).Where(id => damaged.Contains(id) || installed.All(m => m.Id != id)).ToList();
         var catalog = new ModuleCatalog(http, source, keys);
@@ -143,7 +143,7 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
     {
         var warnings = new List<string>();
         var installed = Installed;
-        if (installed.Any(m => m.Status == "official"))
+        if (installed.Any(m => m.Status == ModuleStatus.Official))
         {
             try
             {
@@ -165,7 +165,7 @@ public sealed class ModuleInstaller(string modulesFolder, TrustedKeys keys, Setu
     public IReadOnlyList<string> CustomWarnings(Version app)
     {
         var warnings = new List<string>();
-        foreach (var module in Installed.Where(m => m.Status != "official"))
+        foreach (var module in Installed.Where(m => m.Status != ModuleStatus.Official))
         {
             try
             {

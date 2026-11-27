@@ -2,7 +2,7 @@ namespace ScanRelay.ModuleSdk;
 
 /// <summary>
 /// The contract a printer module implements. One adapter covers one printer family.
-/// First draft: the shapes below are settled when the module system is built.
+/// Installed modules are built against these shapes, so they are not changed: see ModuleSdkInfo.Version.
 /// </summary>
 public interface IDeviceAdapter
 {

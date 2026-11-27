@@ -156,9 +156,12 @@ public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenP
         await _graph.PostAsync($"users/{Uri.EscapeDataString(sender)}/sendMail", message, ct);
     }
 
+    /// <summary>Graph's address for something inside a folder, by its name.</summary>
+    private static string ItemByName(string driveId, string parentId, string name) => $"drives/{driveId}/items/{parentId}:/{Uri.EscapeDataString(name)}";
+
     private async Task<string> EnsureFolderAsync(string driveId, string parentId, string name, CancellationToken ct)
     {
-        var existing = await _graph.GetOrNullAsync($"drives/{driveId}/items/{parentId}:/{Uri.EscapeDataString(name)}?$select=id,folder", ct);
+        var existing = await _graph.GetOrNullAsync(ItemByName(driveId, parentId, name) + "?$select=id,folder", ct);
         if (existing is not null)
         {
             if (existing["folder"] is null) throw new CloudException($"\"{name}\" exists in OneDrive but is a file, not a folder.");
@@ -181,7 +184,7 @@ public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenP
         catch (CloudException e) when (e.Status == 409)
         {
             // Two scans raced to create it. Read the winner.
-            var raced = await _graph.GetAsync($"drives/{driveId}/items/{parentId}:/{Uri.EscapeDataString(name)}?$select=id", ct);
+            var raced = await _graph.GetAsync(ItemByName(driveId, parentId, name) + "?$select=id", ct);
             return raced["id"]!.GetValue<string>();
         }
     }
@@ -191,19 +194,19 @@ public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenP
         using var response = await _graph.SendAsync(
             () => new HttpRequestMessage(
                 HttpMethod.Put,
-                _graph.Url($"drives/{driveId}/items/{parentId}:/{Uri.EscapeDataString(name)}:/content?@microsoft.graph.conflictBehavior=fail"))
+                _graph.Url(ItemByName(driveId, parentId, name) + ":/content?@microsoft.graph.conflictBehavior=fail"))
             {
                 Content = FileContent(filePath, 0, null),
             },
             authenticated: true,
             ct);
-        return JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))!.AsObject();
+        return await GraphHttp.ReadJsonAsync(response, ct);
     }
 
     private async Task<JsonObject> UploadLargeAsync(string driveId, string parentId, string name, string filePath, long size, CancellationToken ct)
     {
         var session = await _graph.PostAsync(
-            $"drives/{driveId}/items/{parentId}:/{Uri.EscapeDataString(name)}:/createUploadSession",
+            ItemByName(driveId, parentId, name) + ":/createUploadSession",
             new JsonObject { ["item"] = new JsonObject { ["@microsoft.graph.conflictBehavior"] = "fail" } },
             ct);
         var uploadUrl = session["uploadUrl"]!.GetValue<string>();
@@ -225,7 +228,7 @@ public sealed class GraphCloud(HttpClient http, InstallConfig install, AppTokenP
                 ct);
             if ((int)response.StatusCode is 200 or 201)
             {
-                item = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))!.AsObject();
+                item = await GraphHttp.ReadJsonAsync(response, ct);
             }
         }
 

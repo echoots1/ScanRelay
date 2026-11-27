@@ -40,7 +40,7 @@ public sealed class AppRegistration(HttpClient http, InstallConfig install, Grap
             ?? throw new CloudException("The sign-in did not say which tenant it was for.");
 
         var cert = certificate.Get();
-        // Both the server's name and localhost, so signing in works from the server itself too.
+        // The server's name, localhost and the proxy address if there is one, so signing in works from each.
         var ours = await RedirectUrisAsync(ct);
         var found = await graph.GetAsync($"applications?$filter=displayName eq '{DisplayName}'&$select=id,appId,web,keyCredentials", ct);
         var existing = (found["value"] as JsonArray)?.FirstOrDefault()?.AsObject();

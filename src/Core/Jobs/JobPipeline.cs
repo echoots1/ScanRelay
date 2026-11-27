@@ -111,6 +111,10 @@ public sealed class JobPipeline(
         }
     }
 
+    /// <summary>The person a folder belongs to: its name is their id. Null when the name is no id, or nobody known has it.</summary>
+    private static async Task<Guid?> KnownPersonAsync(ScanRelayDbContext db, string folderName, CancellationToken ct) =>
+        Guid.TryParse(folderName, out var id) && await db.People.AnyAsync(p => p.Id == id, ct) ? id : null;
+
     /// <summary>Jobs left unfinished by a restart, ready to process.</summary>
     public async Task<IReadOnlyList<Guid>> FindUnfinishedAsync(CancellationToken ct = default)
     {
@@ -202,10 +206,7 @@ public sealed class JobPipeline(
             if (job.FileDeletedUtc is not null || !File.Exists(StorePath(job))) return "The file is no longer on the server, so the job cannot be re-run.";
 
             // The person may have been added since the scan was made.
-            if (job.PersonId is null && Guid.TryParse(job.FolderName, out var folderId) && await db.People.AnyAsync(p => p.Id == folderId, ct))
-            {
-                job.PersonId = folderId;
-            }
+            job.PersonId ??= await KnownPersonAsync(db, job.FolderName, ct);
 
             // An earlier attempt may have reached OneDrive even though we never heard back.
             if (job.DriveItemId?.Split('|') is [var driveId, var itemId] && await SafeExistsAsync(driveId, itemId, ct))
@@ -269,10 +270,7 @@ public sealed class JobPipeline(
 
         _tracked.TryRemove(path, out _);
         await using var db = await factory.CreateDbContextAsync(ct);
-        if (Guid.TryParse(folderName, out var personId) && await db.People.AnyAsync(p => p.Id == personId, ct))
-        {
-            job.PersonId = personId;
-        }
+        job.PersonId = await KnownPersonAsync(db, folderName, ct);
 
         db.Jobs.Add(job);
         if (failure is not null)

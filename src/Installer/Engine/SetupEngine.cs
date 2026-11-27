@@ -499,7 +499,7 @@ public sealed class SetupEngine(SetupEnvironment environment)
             var saved = new InstalledState
             {
                 Version = Version,
-                Answers = a.ForSaving(modules.Installed.Where(m => m.Status == "official").Select(m => m.Id)),
+                Answers = a.ForSaving(modules.Installed.Where(m => m.Status == ModuleStatus.Official).Select(m => m.Id)),
                 GraphCertThumbprint = graphThumbprint,
                 WebCertThumbprint = webThumbprint,
                 WebCertCreatedBySetup = webMadeBySetup,

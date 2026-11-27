@@ -1,6 +1,6 @@
 namespace ScanRelay.Core.Data;
 
-// First draft of the schema. All times are UTC.
+// The schema. All times are UTC. A change here needs a migration.
 
 /// <summary>One setting from the Settings page. Secrets hold the encrypted value.</summary>
 public class Setting
@@ -37,7 +37,7 @@ public class Person
     public DateTime FirstSeenUtc { get; set; }
     public DateTime LastSeenUtc { get; set; }
 
-    /// <summary>Set when the person leaves the list. The row goes once their folder is empty and removed.</summary>
+    /// <summary>Set when the person leaves the list. Their folder goes once it is empty; the row is kept, so old jobs still name them.</summary>
     public DateTime? RemovedUtc { get; set; }
 
     public List<PersonPrinter> Printers { get; set; } = [];
@@ -182,7 +182,7 @@ public enum PushStatus
     Succeeded,
     Failed,
 
-    /// <summary>The installed module has no version for this app, so pushes to the printer are paused.</summary>
+    /// <summary>The printer's module cannot be used (not installed, not for this app, or not trusted), so pushes to the printer are paused.</summary>
     Paused,
 }
 

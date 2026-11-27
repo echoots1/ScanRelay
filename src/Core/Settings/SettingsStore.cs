@@ -100,14 +100,17 @@ public sealed class SettingsStore(
         return value is null ? null : protector.Unprotect(value);
     }
 
-    public async Task<bool> HasSecretAsync(string name, CancellationToken ct = default) =>
-        await GetRowAsync(SecretPrefix + name, ct) is not null;
-
     /// <summary>Small values the service remembers between runs, such as when it last checked for updates.</summary>
     public Task<string?> GetStateAsync(string name, CancellationToken ct = default) => GetRowAsync(StatePrefix + name, ct);
 
     public Task SetStateAsync(string name, string? value, CancellationToken ct = default) =>
         SetRowAsync(StatePrefix + name, value, isSecret: false, ct);
+
+    /// <summary>A moment the service remembers, such as when it last sent a certain alert. Null when it never has.</summary>
+    public async Task<DateTime?> GetStateTimeAsync(string name, CancellationToken ct = default) =>
+        DateTime.TryParse(await GetStateAsync(name, ct), null, System.Globalization.DateTimeStyles.RoundtripKind, out var when) ? when.ToUniversalTime() : null;
+
+    public Task SetStateTimeAsync(string name, DateTime utc, CancellationToken ct = default) => SetStateAsync(name, utc.ToString("o"), ct);
 
     /// <summary>The settings as one JSON document, for backup or moving servers. Secrets are left out.</summary>
     public async Task<string> ExportAsync(CancellationToken ct = default)

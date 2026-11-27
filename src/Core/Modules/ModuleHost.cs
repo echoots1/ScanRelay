@@ -12,7 +12,7 @@ namespace ScanRelay.Core.Modules;
 public sealed record LoadedModule(ModuleData? Data, InstalledModule Installed, IDeviceAdapter? Adapter, string? Problem)
 {
     public string Id => Installed.Id;
-    public bool IsCustom => Installed.Status != "official";
+    public bool IsCustom => Installed.Status != ModuleStatus.Official;
     public bool Usable => Adapter is not null && Problem is null;
 }
 
@@ -93,7 +93,7 @@ public sealed class ModuleHost(InstallConfig install, TrustedKeys keys, HttpClie
             var sigPath = path + ModulePackage.SignatureExtension;
             var signature = File.Exists(sigPath) ? File.ReadAllText(sigPath) : null;
             data = ModulePackage.ReadData(path);
-            if (record.Status == "official" && !keys.Verify(File.ReadAllBytes(path), signature))
+            if (record.Status == ModuleStatus.Official && !keys.Verify(File.ReadAllBytes(path), signature))
             {
                 return new(data, record, null, "Its signature is not the project's. It was not loaded.");
             }
