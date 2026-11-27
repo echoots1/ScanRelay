@@ -93,14 +93,87 @@ public sealed partial class BrotherWebUi : IDisposable
     }
 
     /// <summary>The 25 profile slots: what kind each is and what it is called.</summary>
-    public async Task<IReadOnlyList<BrotherSlot>> ReadSlotsAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<BrotherSlot>> ReadSlotsAsync(CancellationToken ct) => (await ReadSlotListAsync(ct)).Slots;
+
+    private async Task<(IReadOnlyList<BrotherSlot> Slots, string SendToMyFolder)> ReadSlotListAsync(CancellationToken ct)
     {
         var xml = await GetXmlAsync("/ft/scan_profile", ct);
         var types = xml.Descendants("Profile_Type").Select(e => int.TryParse(e.Value.Trim(), out var t) ? t : -1).ToList();
         var names = xml.Descendants("Profile_Name").Select(e => e.Value).ToList();
         if (types.Count == 0) throw new BrotherException("The scanner's profile list was not in the form this module expects. It may need a newer module, or the sign-in may have ended.");
-        return [.. types.Select((type, i) => new BrotherSlot(i, type, i < names.Count ? names[i] : ""))];
+        return ([.. types.Select((type, i) => new BrotherSlot(i, type, i < names.Count ? names[i] : ""))], xml.Element("my_folder")?.Value.Trim() is "1" ? "1" : "0");
     }
+
+    /// <summary>
+    /// Makes the given slots Network profiles. The scanner takes the kind of all its slots in one go,
+    /// so the others are sent back as they are, and so is its "Send to My Folder" setting.
+    /// </summary>
+    public async Task MakeNetworkAsync(IReadOnlyCollection<int> indexes, CancellationToken ct)
+    {
+        var (slots, myFolder) = await ReadSlotListAsync(ct);
+        var pairs = slots.Select(s => $"profile{s.Index}={(indexes.Contains(s.Index) ? BrotherSlot.Network : s.Type)}").Append("SendtoMyFolder=" + myFolder).Append("Scanprofilelist_Save");
+        var status = await PostAsync("/ft/scan_profile", string.Join("&&", pairs), $"POST /ft/scan_profile  (the kind of every slot; {string.Join(", ", indexes.Select(i => i + 1))} to Network)", ct);
+        if (status != 200) throw new BrotherException(ExplainRefusal(status, "change the kind of a profile"));
+    }
+
+    /// <summary>
+    /// Saves one Network profile. The scanner wants every setting of the profile each time, so the scan
+    /// settings it holds now (as just read) go back unchanged, and only the name, the folder and the
+    /// account are set. All four empty clears the profile.
+    /// </summary>
+    public async Task SaveNetworkProfileAsync(int index, XElement current, string name, string folderPath, string user, string password, CancellationToken ct)
+    {
+        string Now(string tag, string fallback = "0") => current.Element(tag)?.Value.Trim() is { Length: > 0 } v ? v : fallback;
+
+        // The names and the order are those of the scanner's own page script.
+        var pairs = new List<string>
+        {
+            "ScanType=" + Now("ScanType", "2"),
+        };
+        foreach (var tag in new[] { "Resolution_Color", "Resolution_BW", "Resolution_Gray", "Resolution_Auto" }) pairs.Add($"{tag}={Now(tag, "300")}");
+        foreach (var tag in new[] { "FileType_Color", "FileType_BW", "FileType_Gray", "FileType_Auto", "FileSize_Color", "FileSize_Gray", "FileSize_Auto" }) pairs.Add($"{tag}={Now(tag, "1")}");
+        foreach (var tag in new[] { "DocumentSize", "PaperWidth", "PaperHeight", "MarginLeft", "MarginTop", "MarginRight", "MarginBottom" }) pairs.Add($"{tag}={Now(tag)}");
+        pairs.Add("AutoDeskew=0");
+        foreach (var tag in new[] { "SkipBlankPage", "DuplexScan", "ContinuousScan", "AutoColorDetectSensitivity", "SkipBlankPageSensitivity" }) pairs.Add($"{tag}={Now(tag)}");
+        pairs.Add("Brightness=" + Now("Brightness", "50"));
+        pairs.Add("Contrast=" + Now("Contrast", "50"));
+        pairs.Add("FileNameIdx=" + Now("FilenameIdx"));
+        pairs.Add("Multifeed=" + Now("Multifeed"));
+        pairs.Add("FileSplit=" + Now("FileSplit"));
+        pairs.Add("FileSplit_Cnt_Doc=" + Now("FileSplit_Cnt_Doc", "1"));
+        pairs.Add("FileSplit_Cnt_Page=" + Now("FileSplit_Cnt_Page", "1"));
+        pairs.Add("CG_Tiff_Compress=" + Now("CG_Tiff_Compress"));
+        pairs.Add("BW_Tiff_Compress=" + Now("BW_Tiff_Compress", "1"));
+        pairs.Add("ScanPreview=" + Now("ScanPreview"));
+        pairs.Add("SecPDF_PIN=" + (current.Element("SecPDF_PIN")?.Value ?? ""));
+        pairs.Add("ProfileName=" + Escape(name));
+        pairs.Add("UsePIN=" + Now("EnablePIN"));
+        pairs.Add("PINCode=" + (current.Element("PINCode")?.Value ?? ""));
+        pairs.Add("NetworkPath=" + Escape(folderPath));
+        pairs.Add("NetworkUser=" + Escape(user));
+        pairs.Add("NetworkPassword=" + Escape(password));
+        pairs.Add("ProfileIndex=" + index);
+        pairs.Add("Auth_Method=2");   // NTLMv2, the only one the page offers
+        pairs.Add("Kerberos_Addr=" + (current.Element("Kerberos_Addr")?.Value ?? ""));
+        pairs.Add("Network_command=SaveOnly");
+        pairs.Add("ScantoShareFolder_Save");
+
+        var status = await PostAsync(ProfileAddress(index), string.Join("&&", pairs),
+            $"POST {ProfileAddress(index)}  ({pairs.Count} values; the name, folder, account and password are not shown)", ct);
+        if (status != 200) throw new BrotherException(ExplainRefusal(status, name.Length == 0 ? "clear a profile" : "save a profile"));
+    }
+
+    /// <summary>As the page's own script writes a value: the three characters that would break its XML.</summary>
+    private static string Escape(string value) => value.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal).Replace(">", "&gt;", StringComparison.Ordinal);
+
+    /// <summary>The scanner says why with a status code. These are the ones its own pages explain.</summary>
+    public static string ExplainRefusal(int status, string doing) => status switch
+    {
+        401 => "The scanner says the sign-in has ended.",
+        520 => $"The scanner would not {doing} because it is in use. Try again when nobody is scanning.",
+        533 => $"The scanner would not {doing} while its Auto Start Scan mode is on. Turn that off under General, Auto Start Scan Mode, in its Web Based Management.",
+        _ => $"The scanner would not {doing} (it answered {status}).",
+    };
 
     /// <summary>Everything the scanner holds for one Network profile, as the names and values its page reads.</summary>
     public async Task<XElement> ReadNetworkProfileAsync(int index, CancellationToken ct) => await GetXmlAsync(ProfileAddress(index), ct);

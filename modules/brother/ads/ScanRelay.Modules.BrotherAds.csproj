@@ -5,4 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\ModuleSdk\ScanRelay.ModuleSdk.csproj" Private="false" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="module.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

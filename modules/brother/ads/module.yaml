@@ -1,0 +1,30 @@
+id: brother-ads
+version: 0.1.0
+vendor: Brother
+family: ADS scanners
+models: [ADS-4900W]                 # as the scanner names itself
+windows_names: ["Brother ADS-4900W*"]
+status: official
+sdk_version: 1
+app_versions:
+  min: 0.2.0
+adapter: ScanRelay.Modules.BrotherAds.dll
+unofficial: true
+method: >-
+  Signs in to the scanner's Web Based Management and sets one "Scan to Network" profile per
+  person, the way its own pages do. Brother does not document this, and a firmware update can
+  change it. Put the Web Based Management password in the password box of the admin sign-in;
+  the user name is not used. The scanner only takes a sign-in over https. It holds 25 profiles
+  in all, so give it its own small group or assign people to it. Profiles that are not
+  ScanRelay's are left alone. Names are cut to 14 characters. Auto Start Scan mode must be off.
+scan:
+  protocols: [smb]
+  smb_versions: ["2.0", "3.0"]      # the scanner signs in to the share with NTLMv2
+  share_rights: [create, write]
+address_book:
+  max_entries: 25
+  one_touch: false
+prerequisites: []
+tested_firmware: []                 # read on an ADS-4900W, main firmware 3.20; nothing written to one yet
+options:
+  secure: "true"                    # the scanner refuses a sign-in over plain http

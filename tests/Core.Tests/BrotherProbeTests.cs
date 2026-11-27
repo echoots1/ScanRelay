@@ -59,6 +59,34 @@ public sealed class BrotherProbeTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task One_profile_can_be_added_and_removed_again_without_touching_the_others()
+    {
+        Environment.SetEnvironmentVariable("BROTHER_SHARE_PASSWORD", "a-different-share-password");
+        try
+        {
+            var before = _scanner.Profiles.ToArray();
+
+            Assert.Equal(0, await BrotherProbeProgram.Main([_scanner.Address.Replace("http://", ""), "--plain", "--out", _folder,
+                "--add", "A test person with a long name", "--folder", @"\\scanserver\Scans$\test", "--user", @"scanserver\scanrelay-printer"]));
+
+            var added = _scanner.Profiles[1];
+            Assert.Equal(("A test person", @"\\scanserver\Scans$\test", "a-different-share-password"), (added.Name, added.FolderPath, added.FolderPass));
+            Assert.Equal(before.Where((_, i) => i != 1), _scanner.Profiles.Where((_, i) => i != 1));
+            var report = await File.ReadAllTextAsync(Path.Combine(_folder, "brother-probe-report.txt"));
+            Assert.Contains("hands the password back as it was typed", report);
+            Assert.DoesNotContain("a-different-share-password", report);
+
+            Assert.Equal(0, await BrotherProbeProgram.Main([_scanner.Address.Replace("http://", ""), "--plain", "--out", _folder, "--remove", "A test person with a long name"]));
+            Assert.Equal("", _scanner.Profiles[1].Name);
+            Assert.Equal(before.Where((_, i) => i != 1), _scanner.Profiles.Where((_, i) => i != 1));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BROTHER_SHARE_PASSWORD", null);
+        }
+    }
+
+    [Fact]
     public void Passwords_pins_and_profile_names_are_left_out_of_what_is_written_down()
     {
         var safe = BrotherWebUi.WithoutSecrets("<Root><ProfileName>Ann Example</ProfileName><FolderUser>srv\\acct</FolderUser><FolderPass>s3cret!</FolderPass><PINCode>1234</PINCode><SecPDF_PIN></SecPDF_PIN><DuplexScan>1</DuplexScan></Root>");

@@ -206,27 +206,42 @@ Work has started with the MF642C.
 
 ## Brother ADS scanners: what is known
 
-Being built for an ADS-4900W (main firmware 3.20). Nothing has been written
-to a scanner yet.
+Built for an ADS-4900W (main firmware 3.20), id `brother-ads`. A real scanner
+has been signed in to and read. **Nothing has been written to one yet,** so
+the saving half is built from the scanner's own page scripts and tested
+against a mock only.
 
 - **One Scan to Network profile per person.** The scanner has 25 profile
   slots, each a Network (shared folder), FTP, SFTP, HTTP(S) or SharePoint
-  profile. A Network profile holds a name of up to 14 characters, a folder
-  path, a user name and a password. Twenty-five slots is the limit, so the
-  scanner gets its own group or assigned people.
-- **The password is typed in as it is.** The profile page takes the share
-  password in plain form, so nothing has to be made by hand on the scanner
-  first and nothing has to be read from it, unlike the Canon.
-- **How its Web Based Management works,** from its own page scripts: the pages
-  are empty shells. Sign-in is one password posted to `/auth/login`, over
-  https only. The profile list is XML at `/ft/scan_profile`. One Network
-  profile is XML at `/ft/scan_tosharefoler=N&&` (the spelling is the
-  scanner's), and saving posts the values back to the same address as
-  `name=value` pairs joined by `&&`. Brother does not document this.
-- **`tools/BrotherProbe` reads a real scanner** and records what it answers,
-  with passwords, PINs and profile names left out. It changes nothing.
-- **Not known yet:** what the profile XML really holds, how a slot's kind is
-  set to Network, and whether an emptied profile is how one is removed.
+  profile. Twenty-five is the limit for everything, so the scanner gets its
+  own small group or assigned people.
+- **Which profiles are ScanRelay's.** A Network profile whose folder path ends
+  in a person's id. Every other profile, of any kind, is left as it is. New
+  people go into slots with no name; an unnamed slot of another kind is made
+  a Network one first. A leaver's profile is cleared.
+- **The password is typed in as it is.** Nothing has to be made by hand on the
+  scanner first and nothing has to be read from it, unlike the Canon.
+- **Names are cut to 14 characters.**
+- **How its Web Based Management works,** from its own page scripts and a real
+  read: the pages are empty shells. Sign-in is one password posted to
+  `/auth/login`, over https only, with the content type header exactly as the
+  page sets it. The profile list is XML at `/ft/scan_profile`, and the kind of
+  all 25 slots is posted back to it in one go. One Network profile is XML at
+  `/ft/scan_tosharefoler=N&&` (the spelling is the scanner's). Saving posts
+  every setting of the profile back to the same address as `name=value` pairs
+  joined by `&&`; the module sends the scan settings back as it read them and
+  sets only the name, folder, account and password. Brother does not document
+  any of this.
+- **The scanner refuses a save** while it is in use, and while its Auto Start
+  Scan mode is on. Both are reported in the scanner's own terms.
+- **`tools/BrotherProbe`** reads a real scanner, and with `--add` saves one
+  profile and reads it back. Passwords, PINs and profile names are left out
+  of its report.
+- **Not known yet:** whether a real scanner takes a save as the module sends
+  it, whether clearing all four fields is how a profile is removed, whether
+  changing a slot's kind disturbs anything else, and in what form the scanner
+  hands a saved password back (which decides whether a changed share password
+  is noticed).
 
 ## Why the vendor modules were not built blind
 
