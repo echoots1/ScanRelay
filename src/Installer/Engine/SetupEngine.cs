@@ -173,6 +173,15 @@ public sealed class SetupEngine(SetupEnvironment environment)
             "Setup does not change who can reach the share. Limiting it to the printer network is a firewall task for IT.");
 
         Section(
+            "Icons",
+            answers.DesktopShortcut
+                ? "Put a ScanRelay icon on the desktop for everyone who signs in to this server. It opens the admin screen and starts the service first if it is stopped."
+                : $"No desktop icon{(was is { DesktopShortcut: true } ? ", and the one that is there is removed" : "")}.",
+            answers.TrayIcon
+                ? "Show a ScanRelay icon by the clock from each person's next sign-in, to open the admin screen and to start, stop or restart the service."
+                : $"No icon by the clock{(was is { TrayIcon: true } ? ", and it no longer starts at sign-in" : "")}.");
+
+        Section(
             "Admin screen",
             $"{answers.Url}",
             answers.ReopenSetup ? "The local setup screen is reopened: until sign-in is set up again, the admin screen answers only on this server, without sign-in." : null);
@@ -375,6 +384,8 @@ public sealed class SetupEngine(SetupEnvironment environment)
             }
 
             previousConfig = InstallFile.Read(a.InstallFolder);
+            WindowsSteps.CloseTrayIcons(log, a.InstallFolder);
+            if (was is not null && !WinPath.Same(was.InstallFolder, a.InstallFolder)) WindowsSteps.CloseTrayIcons(log, was.InstallFolder);
             WindowsSteps.ClearProgramFolder(log, a.InstallFolder, setupExe);
             WindowsSteps.ExtractPayload(log, payload, a.InstallFolder);
             WindowsSteps.CopySetupExe(log, setupExe, a.InstallFolder);
@@ -480,6 +491,7 @@ public sealed class SetupEngine(SetupEnvironment environment)
             saved.WriteTo(a.InstallFolder);
             log.Line($"Saved the answers for Modify and Repair in {Path.Combine(a.InstallFolder, InstalledState.FileName)}. There are no secrets in them.");
             WindowsSteps.RegisterInstalledApp(log, a.InstallFolder, Version);
+            WindowsSteps.SetEverydayUse(log, a.InstallFolder, a.LocalUrl, a.DesktopShortcut, a.TrayIcon);
             return Task.CompletedTask;
         });
 
@@ -628,7 +640,12 @@ public sealed class SetupEngine(SetupEnvironment environment)
             throw new SetupException("ScanRelay was not fully removed. " + string.Join(" ", failures) + " Put that right and run the uninstall again.");
         }
 
-        Step(5, () => WindowsSteps.UnregisterInstalledApp(log));
+        Step(5, () =>
+        {
+            WindowsSteps.RemoveEverydayUse(log);
+            WindowsSteps.CloseTrayIcons(log, a.InstallFolder);
+            WindowsSteps.UnregisterInstalledApp(log);
+        });
         Step(6, () => WindowsSteps.DeleteFolder(log, a.InstallFolder, setupExe));
         Step(7, () =>
         {

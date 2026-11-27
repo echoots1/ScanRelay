@@ -185,6 +185,41 @@ Check "the link that opens setup at its Modules step is registered and passes no
 }
 Check "the installer copied itself into the program folder" { Test-Path "$installFolder\ScanRelaySetup.exe" }
 
+Write-Host "`nIcons and everyday use"
+$desktopIcon = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "ScanRelay.lnk"
+Check "there is a ScanRelay icon on everyone's desktop that opens the admin screen" {
+    if (-not (Test-Path $desktopIcon)) { return $false }
+    $link = (New-Object -ComObject WScript.Shell).CreateShortcut($desktopIcon)
+    $link.TargetPath -eq "$installFolder\ScanRelaySetup.exe" -and $link.Arguments -eq "/open"
+}
+Check "the icon by the clock starts at sign-in" {
+    (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue).ScanRelay -eq "`"$installFolder\ScanRelaySetup.exe`" /tray"
+}
+Check "the icons can read the admin screen's address without the install settings" { $registered.LocalUrl -eq "https://localhost:$Port" -or (Get-ItemProperty $uninstallKey).LocalUrl -eq "https://localhost:$Port" }
+$installedSetup = "$installFolder\ScanRelaySetup.exe"
+function Run-Installed([string[]] $arguments) { (Start-Process -FilePath $installedSetup -ArgumentList $arguments -Wait -PassThru -NoNewWindow).ExitCode }
+Check "the installed program reports the service as running" { (Run-Installed @("/status")) -eq 0 }
+Check "it can stop the service, and then reports it as not running" {
+    (Run-Installed @("/service", "stop")) -eq 0 -and (Get-Service ScanRelay).Status -eq "Stopped" -and (Run-Installed @("/status")) -eq 3
+}
+Check "it can start the service again, and the admin screen answers" {
+    if ((Run-Installed @("/service", "start")) -ne 0) { return $false }
+    $deadline = (Get-Date).AddSeconds(90)
+    while ((Get-Date) -lt $deadline) {
+        try { if ((Invoke-WebRequest "$url/health" -SkipCertificateCheck -TimeoutSec 5).StatusCode -eq 200) { return $true } } catch { Start-Sleep -Seconds 2 }
+    }
+    $false
+}
+Check "it can restart the service" { (Run-Installed @("/service", "restart")) -eq 0 -and (Get-Service ScanRelay).Status -eq "Running" }
+Check "the icon by the clock starts, runs as one copy, and is closed again" {
+    $first = Start-Process -FilePath $installedSetup -ArgumentList "/tray" -PassThru
+    Start-Sleep -Seconds 6
+    $alive = -not $first.HasExited
+    $second = (Start-Process -FilePath $installedSetup -ArgumentList "/tray" -Wait -PassThru).ExitCode
+    if ($alive) { Stop-Process -Id $first.Id -Force }
+    $alive -and $second -eq 0
+}
+
 if ($Module) {
     Write-Host "`nModules"
     $manifest = Get-Content "$installFolder\Modules\modules.json" -Raw | ConvertFrom-Json
@@ -215,6 +250,9 @@ Check "the share is gone" { -not (Get-SmbShare -Name $share -ErrorAction Silentl
 Check "the printer account is gone" { -not (Get-LocalUser -Name $account -ErrorAction SilentlyContinue) }
 Check "the firewall rule is gone" { -not (Get-NetFirewallRule -DisplayName "ScanRelay admin screen" -ErrorAction SilentlyContinue) }
 Check "ScanRelay is no longer under Installed apps" { -not (Test-Path $uninstallKey) }
+Check "the desktop icon and the start at sign-in are gone" {
+    -not (Test-Path $desktopIcon) -and -not (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue).ScanRelay
+}
 Check "the setup link is no longer registered" { -not (Test-Path "HKLM:\SOFTWARE\Classes\scanrelay-setup") }
 Check "both certificates are gone" { -not (Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -in @($install.GraphCertThumbprint, $install.WebCertThumbprint) }) }
 Check "the data folder is gone" { -not (Test-Path $dataFolder) }

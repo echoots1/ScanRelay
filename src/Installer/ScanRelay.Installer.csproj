@@ -8,6 +8,7 @@
     <AssemblyName>ScanRelaySetup</AssemblyName>
     <RootNamespace>ScanRelay.Installer</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationVisualStyles>true</ApplicationVisualStyles>
     <!-- Windows Forms needs culture data for its own resources. -->

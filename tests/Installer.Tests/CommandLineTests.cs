@@ -101,4 +101,44 @@ public class CommandLineTests
     [InlineData("/modify", "/modules")]
     public void The_modules_step_opens_a_window_and_goes_with_nothing_else(string first, string second) =>
         Assert.NotNull(CommandLine.Parse([first, second]).Error);
+
+    [Theory]
+    [InlineData("/tray", SetupMode.Tray)]
+    [InlineData("/open", SetupMode.Open)]
+    [InlineData("/STATUS", SetupMode.Status)]
+    public void The_everyday_modes_need_no_administrator_to_begin_with(string arg, SetupMode expected)
+    {
+        var line = CommandLine.Parse([arg]);
+
+        Assert.Equal(expected, line.Mode);
+        Assert.True(line.IsEverydayUse);
+        Assert.Null(line.Error);
+    }
+
+    [Theory]
+    [InlineData("start")]
+    [InlineData("stop")]
+    [InlineData("Restart")]
+    public void The_service_can_be_started_stopped_or_restarted(string verb)
+    {
+        var line = CommandLine.Parse(["/service", verb]);
+
+        Assert.Equal(SetupMode.Service, line.Mode);
+        Assert.Equal(verb.ToLowerInvariant(), line.ServiceVerb);
+        Assert.Null(line.Error);
+    }
+
+    [Theory]
+    [InlineData("/service")]
+    [InlineData("/service", "delete")]
+    [InlineData("/open", "/quiet")]
+    [InlineData("/tray", "/uninstall")]
+    [InlineData("/modify", "/open")]
+    [InlineData("/status", "/answers", "a.json")]
+    public void An_everyday_mode_goes_with_nothing_else_and_a_service_needs_a_known_verb(params string[] args) =>
+        Assert.NotNull(CommandLine.Parse(args).Error);
+
+    [Fact]
+    public void Setup_modes_are_not_everyday_use() =>
+        Assert.All(new[] { "/modify", "/uninstall", "/modules", "/quiet" }, a => Assert.False(CommandLine.Parse([a]).IsEverydayUse));
 }

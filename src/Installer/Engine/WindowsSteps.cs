@@ -759,6 +759,138 @@ internal static class WindowsSteps
 
     // ---- Installed apps ----
 
+    // ---- Everyday use: the desktop icon and the icon by the clock ----
+
+    public const string DesktopShortcutName = "ScanRelay.lnk";
+    public const string RunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    public const string RunValue = "ScanRelay";
+
+    /// <summary>Where the admin screen's address on this server is kept for the icons, which run as an ordinary person and may not read the install settings.</summary>
+    public const string LocalUrlValue = "LocalUrl";
+
+    public static string DesktopShortcutPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), DesktopShortcutName);
+
+    /// <summary>The address the icons open, or null when ScanRelay is not installed.</summary>
+    public static string? ReadLocalUrl()
+    {
+        using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var key = hklm.OpenSubKey(InstalledState.UninstallKey);
+        return key?.GetValue(LocalUrlValue) as string is { Length: > 0 } url ? url : null;
+    }
+
+    /// <summary>Whether setup was asked to show the icon by the clock.</summary>
+    public static bool TrayIconWanted()
+    {
+        using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var run = hklm.OpenSubKey(RunKey);
+        return run?.GetValue(RunValue) is not null;
+    }
+
+    /// <summary>Adds or removes the desktop icon and the icon by the clock, to match what was asked.</summary>
+    public static void SetEverydayUse(SetupLog log, string installFolder, string localUrl, bool desktopShortcut, bool trayIcon)
+    {
+        var setup = Path.Combine(installFolder, SetupExe);
+        using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using (var app = hklm.CreateSubKey(InstalledState.UninstallKey, writable: true))
+        {
+            app.SetValue(LocalUrlValue, localUrl);
+        }
+
+        if (desktopShortcut)
+        {
+            try
+            {
+                CreateShortcut(DesktopShortcutPath, setup, "/open", installFolder, "Open ScanRelay. Starts it first if it is stopped.");
+                log.Line($"Put a ScanRelay icon on the desktop for everyone who signs in to this server ({DesktopShortcutPath}).");
+            }
+            catch (Exception e) when (e is System.Runtime.InteropServices.COMException or System.Reflection.TargetInvocationException or InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                log.Warn($"The desktop icon could not be made: {(e.InnerException ?? e).Message} ScanRelay works without it; open {localUrl} in a browser on this server.");
+            }
+        }
+        else if (File.Exists(DesktopShortcutPath))
+        {
+            File.Delete(DesktopShortcutPath);
+            log.Line("Removed the ScanRelay desktop icon, as asked.");
+        }
+
+        using var run = hklm.CreateSubKey(RunKey, writable: true);
+        if (trayIcon)
+        {
+            run.SetValue(RunValue, $"\"{setup}\" /tray");
+            log.Line("The ScanRelay icon by the clock will show for each person from their next sign-in. It also shows the first time the desktop icon is used.");
+        }
+        else if (run.GetValue(RunValue) is not null)
+        {
+            run.DeleteValue(RunValue, throwOnMissingValue: false);
+            log.Line("The ScanRelay icon by the clock will no longer start at sign-in, as asked.");
+        }
+    }
+
+    public static void RemoveEverydayUse(SetupLog log)
+    {
+        if (File.Exists(DesktopShortcutPath)) File.Delete(DesktopShortcutPath);
+        using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var run = hklm.OpenSubKey(RunKey, writable: true);
+        run?.DeleteValue(RunValue, throwOnMissingValue: false);
+        log.Line("Removed the ScanRelay desktop icon and its start at sign-in.");
+    }
+
+    /// <summary>
+    /// Closes the icons by the clock, which are this same program running from the program folder
+    /// in people's sessions. While one runs, its file cannot be replaced or removed.
+    /// </summary>
+    public static void CloseTrayIcons(SetupLog log, string installFolder)
+    {
+        var installed = Path.Combine(installFolder, SetupExe);
+        var closed = 0;
+        foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(SetupExe)))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.Id == Environment.ProcessId || process.MainModule?.FileName is not { } path || !SamePath(path, installed)) continue;
+                    process.Kill();
+                    process.WaitForExit(10000);
+                    closed++;
+                }
+                catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                {
+                    // Already gone, or not ours to look at.
+                }
+            }
+        }
+
+        if (closed > 0) log.Line($"Closed {closed} ScanRelay icon(s) by the clock so the program files can be changed. They come back at the next sign-in, or when the desktop icon is used.");
+    }
+
+    /// <summary>Makes a Windows shortcut. Windows only offers this through its scripting component.</summary>
+    private static void CreateShortcut(string path, string target, string arguments, string startIn, string description)
+    {
+        var type = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("Windows Script Host is not available on this server.");
+        var shell = Activator.CreateInstance(type) ?? throw new InvalidOperationException("Windows Script Host could not be started.");
+        object? shortcut = null;
+        try
+        {
+            const System.Reflection.BindingFlags call = System.Reflection.BindingFlags.InvokeMethod;
+            const System.Reflection.BindingFlags set = System.Reflection.BindingFlags.SetProperty;
+            shortcut = type.InvokeMember("CreateShortcut", call, null, shell, [path])!;
+            var link = shortcut.GetType();
+            link.InvokeMember("TargetPath", set, null, shortcut, [target]);
+            link.InvokeMember("Arguments", set, null, shortcut, [arguments]);
+            link.InvokeMember("WorkingDirectory", set, null, shortcut, [startIn]);
+            link.InvokeMember("Description", set, null, shortcut, [description]);
+            link.InvokeMember("IconLocation", set, null, shortcut, [target + ",0"]);
+            link.InvokeMember("Save", call, null, shortcut, null);
+        }
+        finally
+        {
+            if (shortcut is not null) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcut);
+            System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
+        }
+    }
+
     public const string SetupLinkScheme = "scanrelay-setup";
     public const string SetupLinkKey = @"SOFTWARE\Classes\" + SetupLinkScheme;
 

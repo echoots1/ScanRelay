@@ -52,6 +52,12 @@ public sealed partial class SetupAnswers
 
     public bool AddFirewallRule { get; set; } = true;
 
+    /// <summary>A ScanRelay icon on the desktop of everyone who signs in to the server. It opens the admin screen, starting the service first if it is stopped.</summary>
+    public bool DesktopShortcut { get; set; } = true;
+
+    /// <summary>A ScanRelay icon by the clock, from sign-in: open the admin screen, and start, stop or restart the service.</summary>
+    public bool TrayIcon { get; set; } = true;
+
     /// <summary>The repo that publishes releases and the module catalog.</summary>
     public string Repository { get; set; } = "echoots1/ScanRelay";
 

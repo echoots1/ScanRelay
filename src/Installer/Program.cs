@@ -16,7 +16,46 @@ internal static class Program
             Console = line.Quiet ? QuietConsole() : null,
         };
 
+        if (line.IsEverydayUse && line.Error is null) return RunEveryday(line);
         return line.Quiet ? RunQuiet(line, environment) : RunWizard(line, environment);
+    }
+
+    /// <summary>The tray icon and the desktop icon. Nothing here changes the install.</summary>
+    private static int RunEveryday(CommandLine line)
+    {
+        switch (line.Mode)
+        {
+            case SetupMode.Status:
+                return ServiceControl.ExitCode(ServiceControl.State());
+
+            case SetupMode.Service:
+            {
+                var problem = Everyday.ControlService(line.ServiceVerb!, IsElevated());
+                if (problem is null) return 0;
+                if (IsElevated()) new SetupLog(SetupEnvironment.DefaultLogPath, null, null, 0).Line(problem);
+                return 1;
+            }
+
+            case SetupMode.Open:
+            {
+                ApplicationConfiguration.Initialize();
+                Everyday.EnsureTray();
+                var problem = Everyday.Open(IsElevated());
+                if (problem is null) return 0;
+                MessageBox.Show(problem, Everyday.Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return 1;
+            }
+
+            default:
+            {
+                using var once = new Mutex(initiallyOwned: true, TrayIcon.MutexName, out var first);
+                if (!first) return 0;
+                ApplicationConfiguration.Initialize();
+                using var tray = new TrayIcon(IsElevated());
+                Application.Run(tray);
+                return 0;
+            }
+        }
     }
 
     /// <summary>No windows at all: for automated installs and tests. The exit code says whether it worked.</summary>
@@ -59,8 +98,9 @@ internal static class Program
     private const string NotElevated = "ScanRelay setup must be run as an administrator. It creates an account, a share and a Windows service.";
 
     /// <summary>
-    /// The manifest already asks Windows for administrator rights. This catches a copy
-    /// whose manifest was lost in the build, before it fails half-way through instead.
+    /// Setup starts as whoever ran it, because the same program is also the tray icon and the
+    /// desktop icon, which must not ask for an administrator each time. Anything that changes
+    /// the install checks this first.
     /// </summary>
     private static bool IsElevated()
     {
@@ -101,8 +141,23 @@ internal static class Program
 
         if (!IsElevated())
         {
-            MessageBox.Show(NotElevated, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return 1;
+            // Setup itself needs an administrator. Start again as one: Windows asks, as it does for any installer.
+            try
+            {
+                using var again = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(environment.SetupExePath, string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a)))
+                {
+                    UseShellExecute = true,
+                    Verb = "runas",
+                });
+                if (again is null) return 1;
+                again.WaitForExit();
+                return again.ExitCode;
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                MessageBox.Show(NotElevated, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return 1;
+            }
         }
 
         var engine = new SetupEngine(environment);

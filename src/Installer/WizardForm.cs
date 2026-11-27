@@ -91,7 +91,7 @@ internal sealed class WizardForm : Form
         foreach (var page in new WizardPage[]
         {
             new WelcomePage(model), new MaintenancePage(model), new UpdatePage(model), new FoldersPage(model), new AdminScreenPage(model),
-            new WebCertificatePage(model), new PrinterAccountPage(model), new ModulesPage(model), new UpdatesPage(model),
+            new WebCertificatePage(model), new PrinterAccountPage(model), new ModulesPage(model), new UpdatesPage(model), new ShortcutsPage(model),
             new SummaryPage(model), new UninstallPage(model), new ProgressPage(model), new DonePage(model),
         })
         {
@@ -123,7 +123,7 @@ internal sealed class WizardForm : Form
     {
         WizardPage[] questions =
         [
-            Page<FoldersPage>(), Page<AdminScreenPage>(), Page<WebCertificatePage>(), Page<PrinterAccountPage>(), Page<ModulesPage>(), Page<UpdatesPage>(),
+            Page<FoldersPage>(), Page<AdminScreenPage>(), Page<WebCertificatePage>(), Page<PrinterAccountPage>(), Page<ModulesPage>(), Page<UpdatesPage>(), Page<ShortcutsPage>(),
         ];
         WizardPage[] apply = [Page<SummaryPage>(), Page<ProgressPage>(), Page<DonePage>()];
         return flow switch

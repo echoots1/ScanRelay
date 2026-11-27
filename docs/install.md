@@ -31,8 +31,8 @@ Get-FileHash .\ScanRelaySetup-<version>.exe -Algorithm SHA256
 ```
 
 The installer is one program, `ScanRelaySetup.exe`. It is not an MSI. It is
-not signed yet, so Windows shows an unknown publisher warning. Run it as an
-administrator. It asks:
+not signed yet, so Windows shows an unknown publisher warning. It needs an
+administrator, and Windows asks for one when it starts. It asks:
 
 | Question | Default | Notes |
 |----------|---------|-------|
@@ -43,6 +43,7 @@ administrator. It asks:
 | Printer account name and share name | `scanrelay-printer`, `Scans$` | A local account. The installer creates its password and stores it encrypted. It refuses a name that already belongs to something else. |
 | Which printer modules to install | None | Ticked from the list on GitHub. A custom module can be added from a file. |
 | May the app check GitHub for updates | Yes | Can be changed later in Settings. |
+| A desktop icon and an icon by the clock | Both | See "The icons" below. Either can be turned off, here or later with Modify. |
 
 Before it changes anything, the installer shows what it will create on the
 server: the local account, the hidden share, the firewall rule and the
@@ -160,6 +161,28 @@ Runs page shows who joined and left at each sync.
 | "My scan never arrived" | Jobs: find the scan, read the error, press Re-run |
 | A printer did not update | Runs: read the error, press Re-run |
 | A sync was stopped by the change guard | Runs: read what it would remove, then Approve or Cancel |
+
+### The icons
+
+ScanRelay runs as a Windows service and has no window. Setup adds two ways to
+reach it on the server:
+
+- **A ScanRelay icon on the desktop,** for everyone who signs in to the server.
+  It opens the admin screen in the browser. If the service is stopped, it
+  starts it first.
+- **A ScanRelay icon by the clock,** from each person's next sign-in, and from
+  the first time the desktop icon is used. A green dot means the service is
+  running, red means stopped, amber means it is starting or stopping.
+  Double-click it to open the admin screen. Its menu opens the admin screen
+  and starts, stops or restarts the service.
+
+Starting, stopping and restarting a service need an administrator, so Windows
+asks for one each time. Opening the admin screen does not.
+
+Both are the setup program itself, `ScanRelaySetup.exe` in the program folder,
+started with `/open` and `/tray`. `ScanRelaySetup.exe /service restart` does
+the same from a command line, and `ScanRelaySetup.exe /status` answers by exit
+code: 0 running, 3 not running, 4 not installed.
 
 ## Changing, repairing, updating, removing
 

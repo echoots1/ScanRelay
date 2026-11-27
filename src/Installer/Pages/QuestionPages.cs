@@ -214,3 +214,30 @@ internal sealed class UpdatesPage : WizardPage
         return true;
     }
 }
+
+internal sealed class ShortcutsPage : WizardPage
+{
+    private readonly CheckBox _desktop;
+    private readonly CheckBox _tray;
+
+    public ShortcutsPage(WizardModel model)
+        : base(model)
+    {
+        AddText("ScanRelay runs as a Windows service with no window of its own. These two make it easy to reach on this server.");
+        _desktop = AddCheck("Put a ScanRelay icon on the &desktop", model.Answers.DesktopShortcut);
+        AddText("For everyone who signs in to this server. It opens the admin screen in the browser. If the service is stopped, it starts it first; Windows asks for an administrator to do that.");
+        _tray = AddCheck("Show a ScanRelay icon by the &clock", model.Answers.TrayIcon, 0);
+        AddText("From each person's next sign-in. A green dot means running, red means stopped. Its menu opens the admin screen and starts, stops or restarts the service; Windows asks for an administrator for those three.");
+    }
+
+    public override string Heading => "Icons";
+
+    public override string Explanation => "How ScanRelay is reached on this server.";
+
+    public override bool Leaving()
+    {
+        Model.Answers.DesktopShortcut = _desktop.Checked;
+        Model.Answers.TrayIcon = _tray.Checked;
+        return true;
+    }
+}
