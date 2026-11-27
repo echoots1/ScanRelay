@@ -67,6 +67,10 @@ public sealed partial class BrotherWebUi : IDisposable
     /// <summary>Signs in with the Web Based Management password. The scanner only takes this over https.</summary>
     public async Task SignInAsync(string password, CancellationToken ct)
     {
+        // A browser has always opened a page before it signs in, and the one sign-in from this code that
+        // worked had fetched the scanner's pages first. So open the front page as a browser would.
+        await GetAsync("/EWS/home/status.html", ct, describe: false);
+
         // As the page's own script sends it: the password with "&" written as "&amp;", then a marker.
         var body = "PASS=" + password.Replace("&", "&amp;", StringComparison.Ordinal) + "&&Admin_Password_Save";
         var status = await PostAsync("/auth/login", body, "POST /auth/login  PASS=(hidden)", ct);
@@ -197,7 +201,7 @@ public sealed partial class BrotherWebUi : IDisposable
         Trace?.Invoke("GET " + path);
         using var response = await SendAsync(new HttpRequestMessage(HttpMethod.Get, _base + path), ct);
         var body = await response.Content.ReadAsStringAsync(ct);
-        Trace?.Invoke($"    -> {(int)response.StatusCode} {response.Content.Headers.ContentType?.MediaType}, {body.Length} characters");
+        Trace?.Invoke($"    -> {(int)response.StatusCode} {response.Content.Headers.ContentType?.MediaType}, {body.Length} characters{CookieNote(response)}");
         if (describe && response.IsSuccessStatusCode) foreach (var line in WithoutSecrets(body).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) Trace?.Invoke("       | " + line);
         return ((int)response.StatusCode, body);
     }
@@ -210,7 +214,15 @@ public sealed partial class BrotherWebUi : IDisposable
         // Exactly the header the page's own script sets, with nothing added to it.
         request.Content.Headers.TryAddWithoutValidation("Content-Type", "application/x-www-form-urlencoded");
         using var response = await SendAsync(request, ct);
-        Trace?.Invoke($"    -> {(int)response.StatusCode}");
+        Trace?.Invoke($"    -> {(int)response.StatusCode}{CookieNote(response)}");
+        if (!response.IsSuccessStatusCode)
+        {
+            // What the scanner said when it refused. Its answers hold no secrets of ours.
+            var said = (await response.Content.ReadAsStringAsync(ct)).Trim();
+            if (said.Length > 0) Trace?.Invoke("       it said: " + (said.Length > 300 ? said[..300] + "..." : said).ReplaceLineEndings(" "));
+            foreach (var header in response.Headers.Where(h => h.Key is "WWW-Authenticate" or "Retry-After" or "Location")) Trace?.Invoke($"       {header.Key}: {string.Join(", ", header.Value)}");
+        }
+
         return (int)response.StatusCode;
     }
 
@@ -225,6 +237,12 @@ public sealed partial class BrotherWebUi : IDisposable
             throw new BrotherException($"Could not reach the scanner's Web Based Management at {_base}: {e.InnerException?.Message ?? e.Message}");
         }
     }
+
+    /// <summary>The names of any cookies an answer sets, never their values: a session cookie is a key to the scanner.</summary>
+    private static string CookieNote(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("Set-Cookie", out var cookies)
+            ? "  (sets cookie: " + string.Join(", ", cookies.Select(c => c.Split('=')[0].Trim())) + ")"
+            : "";
 
     private static XElement? TryXml(string body)
     {

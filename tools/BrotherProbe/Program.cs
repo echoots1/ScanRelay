@@ -72,6 +72,17 @@ public static class BrotherProbeProgram
                 report.WriteLine("----- end -----");
             }
 
+            // The Login button's own handler is in a script not seen yet. Record the part of it that signs in.
+            foreach (var path in new[] { "/EWS/common/js/status.js", "/EWS/common/js/status_language.js", "/EWS/common/js/menu_controller.js" })
+            {
+                var (status, body) = await ui.GetPageAsync(path, default);
+                var at = status == 200 ? body.IndexOf("function login_pass", StringComparison.Ordinal) : -1;
+                if (at < 0) continue;
+                report.WriteLine($"----- login_pass, from {path} -----");
+                report.WriteLine(body[at..Math.Min(body.Length, at + 2500)]);
+                report.WriteLine("----- end -----");
+            }
+
             await ui.SignInAsync(password, default);
             Say("Signed in.");
             try
