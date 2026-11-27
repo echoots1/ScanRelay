@@ -204,6 +204,30 @@ Work has started with the MF642C.
   folder entry only. The setting that adds each person's email address applies
   to printers whose entries hold both, such as Kyocera.
 
+## Brother ADS scanners: what is known
+
+Being built for an ADS-4900W (main firmware 3.20). Nothing has been written
+to a scanner yet.
+
+- **One Scan to Network profile per person.** The scanner has 25 profile
+  slots, each a Network (shared folder), FTP, SFTP, HTTP(S) or SharePoint
+  profile. A Network profile holds a name of up to 14 characters, a folder
+  path, a user name and a password. Twenty-five slots is the limit, so the
+  scanner gets its own group or assigned people.
+- **The password is typed in as it is.** The profile page takes the share
+  password in plain form, so nothing has to be made by hand on the scanner
+  first and nothing has to be read from it, unlike the Canon.
+- **How its Web Based Management works,** from its own page scripts: the pages
+  are empty shells. Sign-in is one password posted to `/auth/login`, over
+  https only. The profile list is XML at `/ft/scan_profile`. One Network
+  profile is XML at `/ft/scan_tosharefoler=N&&` (the spelling is the
+  scanner's), and saving posts the values back to the same address as
+  `name=value` pairs joined by `&&`. Brother does not document this.
+- **`tools/BrotherProbe` reads a real scanner** and records what it answers,
+  with passwords, PINs and profile names left out. It changes nothing.
+- **Not known yet:** what the profile XML really holds, how a slot's kind is
+  set to Network, and whether an emptied profile is how one is removed.
+
 ## Why the vendor modules were not built blind
 
 Each one depends on a method that has not been tried on a real machine, and

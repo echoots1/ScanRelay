@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\tools\ModuleTool\ScanRelay.ModuleTool.csproj" />
     <ProjectReference Include="..\..\tools\KyoceraProbe\ScanRelay.KyoceraProbe.csproj" />
     <ProjectReference Include="..\..\tools\CanonProbe\ScanRelay.CanonProbe.csproj" />
+    <ProjectReference Include="..\..\tools\BrotherProbe\ScanRelay.BrotherProbe.csproj" />
     <ProjectReference Include="..\..\modules\kyocera\ecosys\ScanRelay.Modules.KyoceraEcosys.csproj" />
     <ProjectReference Include="..\..\modules\canon\imageclass\ScanRelay.Modules.CanonImageClass.csproj" />
     <!-- Built first so the tests can package it, but never loaded directly. -->

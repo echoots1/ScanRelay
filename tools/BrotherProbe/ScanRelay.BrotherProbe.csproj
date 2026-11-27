@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>brother-probe</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\brother\ads\ScanRelay.Modules.BrotherAds.csproj" />
+    <ProjectReference Include="..\..\src\ModuleSdk\ScanRelay.ModuleSdk.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,9 @@
 <Solution>
   <Folder Name="/modules/" />
   <Folder Name="/modules/canon/" />
+  <Folder Name="/modules/brother/ads/">
+    <Project Path="modules/brother/ads/ScanRelay.Modules.BrotherAds.csproj" />
+  </Folder>
   <Folder Name="/modules/canon/imageclass/">
     <Project Path="modules/canon/imageclass/ScanRelay.Modules.CanonImageClass.csproj" />
   </Folder>
@@ -37,6 +40,9 @@
     <Project Path="tests/MockDevices/ScanRelay.MockDevices.csproj" />
   </Folder>
   <Folder Name="/tools/" />
+  <Folder Name="/tools/BrotherProbe/">
+    <Project Path="tools/BrotherProbe/ScanRelay.BrotherProbe.csproj" />
+  </Folder>
   <Folder Name="/tools/CanonProbe/">
     <Project Path="tools/CanonProbe/ScanRelay.CanonProbe.csproj" />
   </Folder>
