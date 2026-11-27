@@ -1,5 +1,5 @@
 id: kyocera-ecosys
-version: 0.2.0
+version: 0.2.1
 vendor: Kyocera
 family: ECOSYS
 models: [ECOSYS M8124cidn]          # exact model names, added as each is tested
