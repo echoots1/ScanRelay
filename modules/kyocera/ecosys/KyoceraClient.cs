@@ -8,10 +8,7 @@ namespace ScanRelay.Modules.KyoceraEcosys;
 /// <param name="HasOtherDestinations">True when it also carries a fax, FTP or internet fax destination, which this module never writes.</param>
 public sealed record Contact(int Id, string Name, string SmbServer, string SmbPath, int SmbPort, string SmbLoginName, string SmbPassword, bool HasOtherDestinations, string Email = "");
 
-public sealed class KyoceraException(string message, string? result = null) : Exception(message)
-{
-    public string? Result { get; } = result;
-}
+public sealed class KyoceraException(string message) : Exception(message);
 
 /// <summary>
 /// Talks to the address book part of the printer's network service. The messages follow what
@@ -29,7 +26,7 @@ public sealed class KyoceraClient(HttpClient http, string baseUrl)
     /// <summary>Set by tests to skip real waiting.</summary>
     public Func<TimeSpan, CancellationToken, Task> Wait { get; init; } = Task.Delay;
 
-    /// <summary>The last request and answer, for the hand test tool to show.</summary>
+    /// <summary>Each request and its answer, for the hand test tool to show.</summary>
     public Action<string, string>? Trace { get; init; }
 
     public async Task<(string Model, string? Firmware)> IdentifyAsync(CancellationToken ct)
@@ -144,7 +141,7 @@ public sealed class KyoceraClient(HttpClient http, string baseUrl)
             if (body.Element(Soap + "Fault") is { } fault)
             {
                 var reason = fault.Descendants(Soap + "Text").FirstOrDefault()?.Value.Trim() ?? "no reason given";
-                throw new KyoceraException($"The printer does not accept \"{operation}\": {reason}.", "FAULT");
+                throw new KyoceraException($"The printer does not accept \"{operation}\": {reason}.");
             }
 
             var result = Result(body);
@@ -158,7 +155,7 @@ public sealed class KyoceraClient(HttpClient http, string baseUrl)
             }
 
             var detail = body.Descendants(Book + "error_information").Select(Result).FirstOrDefault(r => r is not null and not "SUCCESS");
-            throw new KyoceraException(Explain(operation, detail ?? result), detail ?? result);
+            throw new KyoceraException(Explain(operation, detail ?? result));
         }
     }
 

@@ -36,14 +36,14 @@ internal static class HarnessProgram
         var state = cloud.State;
         var admin = state.AddUser("Alex Admin");
         var helper = state.AddUser("Harper Helpdesk");
-        var stranger = state.AddUser("Sam Stranger");
+        state.AddUser("Sam Stranger");
         var staff = new[] { "Ann Example", "Bob Example", "Cy Example", "Dee Example", "Eve Example", "Finn Example" }.Select(n => state.AddUser(n)).ToArray();
         state.AddUser("Nora NoDrive", hasDrive: false);
         state.AddUser("Manual Person");
         state.AddUser("Alerts", "alerts@example.com");
         state.AddGroup("ScanRelay Admins", admin);
         state.AddGroup("ScanRelay Helpdesk", helper);
-        var allStaff = state.AddGroup("All Staff", [.. staff, admin]);
+        state.AddGroup("All Staff", [.. staff, admin]);
         state.AddGroup("Front Office", staff[0], staff[1]);
         state.SignInAs = admin.Id;
 
@@ -152,8 +152,6 @@ internal static class HarnessProgram
         Console.WriteLine($"Mock printer:  {printer.Address}:{printer.Port}  ({printer.AdminUser} / {printer.AdminPassword})");
         Console.WriteLine("Signs in as Alex Admin. Groups: ScanRelay Admins, ScanRelay Helpdesk, All Staff, Front Office.");
         await app.RunAsync();
-        _ = allStaff;
-        _ = stranger;
     }
 
     private static string PrepareSample(string work)

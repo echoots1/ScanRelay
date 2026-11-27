@@ -1,3 +1,5 @@
+using ScanRelay.ProbeTools;
+
 namespace ScanRelay.KyoceraProbe;
 
 public static class ProbeProgram
@@ -26,14 +28,14 @@ public static class ProbeProgram
             return args.Length == 0 ? 0 : 1;
         }
 
-        var netViewer = Array.IndexOf(args, "--netviewer") is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        var netViewer = ProbeConsole.Option(args, "--netviewer");
 
         // Printers use a self-signed certificate. This tool only ever talks to the one address it is given.
         using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         if (args.Contains("--write-test"))
         {
-            var number = Array.IndexOf(args, "--number") is var n and >= 0 && n + 1 < args.Length && int.TryParse(args[n + 1], out var chosen) ? chosen : 150;
+            var number = int.TryParse(ProbeConsole.Option(args, "--number"), out var chosen) ? chosen : 150;
             var plain = args.Contains("--plain");
             const string writeReport = "kyocera-write-test-report.txt";
             bool ok;

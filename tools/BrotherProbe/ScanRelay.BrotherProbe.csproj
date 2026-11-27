@@ -5,6 +5,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\ProbeConsole.cs" Link="ProbeConsole.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\modules\brother\ads\ScanRelay.Modules.BrotherAds.csproj" />
     <ProjectReference Include="..\..\src\ModuleSdk\ScanRelay.ModuleSdk.csproj" />
   </ItemGroup>

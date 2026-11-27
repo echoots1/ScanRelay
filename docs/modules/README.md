@@ -100,12 +100,11 @@ dotnet run --project tools/KyoceraProbe -- <printer address> --write-test --numb
 
 Work has started with the MF642C.
 
-- **The file format is known.** The Remote UI exports the address book as a
-  Canon Address Book file (`.abk`). It is plain text: a few comment lines,
-  then one block per entry, each with a number (`dn`), a name, and either an
-  email address or a shared folder's host, path and user name. Names and
-  folder details are Base64. `modules/canon/imageclass/AbkFile.cs` reads and
-  writes it, and writes back a real export byte for byte.
+- **Two export formats, one of them useful.** The Remote UI can export the
+  address book as a Canon Address Book file (`.abk`): plain text, one block
+  per entry, names and folder details in Base64. It carries no passwords, so
+  the module does not use it. The module works with the other format, the
+  configuration file (`.dcm`), described further down.
 - **One entry is one destination.** Unlike Kyocera, an email address and a
   shared folder are separate entries, so a person who should have both needs
   two.

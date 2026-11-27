@@ -34,14 +34,10 @@ public sealed class MockBrother : IAsyncDisposable
 
     public static async Task<MockBrother> StartAsync()
     {
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var app = builder.Build();
+        var app = MockHost.Create();
         var mock = new MockBrother(app);
         app.Run(mock.HandleAsync);
-        await app.StartAsync();
-        mock.Port = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First()).Port;
+        mock.Port = await MockHost.StartAsync(app);
         return mock;
     }
 
@@ -51,7 +47,6 @@ public sealed class MockBrother : IAsyncDisposable
     public int? BusyStatus { get; set; }
     public int Saves;
     public int TypeChanges;
-    public string? LastRefusal { get; private set; }
 
     private static readonly string[] RequiredOnSave =
     [
@@ -183,7 +178,6 @@ public sealed class MockBrother : IAsyncDisposable
             if (missing.Count > 0 || Profiles[saved].Type != 0 || sent["ProfileIndex"] != saved.ToString() || sent["Network_command"] != "SaveOnly" || sent["Auth_Method"] != "2")
             {
                 context.Response.StatusCode = 400;
-                LastRefusal = missing.Count > 0 ? "missing: " + string.Join(", ", missing) : "not a Network slot, or the index, command or sign-in method is wrong";
                 return;
             }
 

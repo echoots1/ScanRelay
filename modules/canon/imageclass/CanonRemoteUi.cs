@@ -20,13 +20,13 @@ public sealed partial class CanonRemoteUi : IDisposable
     private readonly HttpClient _http;
     private readonly string _base;
 
-    public CanonRemoteUi(string address, bool secure = true, HttpMessageHandler? handler = null)
+    public CanonRemoteUi(string address, bool secure = true)
     {
         _base = address.Contains("://", StringComparison.Ordinal) ? address.TrimEnd('/') : $"{(secure ? "https" : "http")}://{address}";
 
         // The printer presents a certificate it made itself, so it cannot be checked against anything.
         // A cookie jar per connection keeps one printer's session apart from another's.
-        _http = new HttpClient(handler ?? new HttpClientHandler
+        _http = new HttpClient(new HttpClientHandler
         {
             CookieContainer = new CookieContainer(),
             ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
@@ -36,7 +36,7 @@ public sealed partial class CanonRemoteUi : IDisposable
         };
     }
 
-    /// <summary>Every request and answer, with secrets left out. The probe tool prints it; the service does not keep it.</summary>
+    /// <summary>Every request and answer, with secrets left out. The probe tool prints it; the adapter writes it to the service log.</summary>
     public Action<string>? Trace { get; init; }
 
     /// <summary>How long to wait between asking the printer whether it has finished.</summary>
@@ -69,7 +69,7 @@ public sealed partial class CanonRemoteUi : IDisposable
     /// <summary>The model names from the sign-in page's title, such as "MF642C/643C/644C". Needs no sign-in.</summary>
     public async Task<string?> ReadModelAsync(CancellationToken ct)
     {
-        var (_, html, _) = await GetAsync("/login.html", ct);
+        var (_, html) = await GetAsync("/login.html", ct);
         var title = TitlePattern().Match(html) is { Success: true } m ? WebUtility.HtmlDecode(m.Groups[1].Value) : "";
         var last = title.LastIndexOf(':');
         return last >= 0 && title.Contains("Remote UI", StringComparison.OrdinalIgnoreCase) ? title[(last + 1)..].Trim() : null;
@@ -78,7 +78,7 @@ public sealed partial class CanonRemoteUi : IDisposable
     public async Task SignInAsync(string managerId, string managerPin, CancellationToken ct)
     {
         var (status, _, final) = await PostFormAsync("/checkLogin.cgi",
-            [("i0012", "1"), ("i0014", managerId), ("i0016", managerPin)], ct, secret: "i0016");
+            [("i0012", "1"), ("i0014", managerId), ("i0016", managerPin)], ct);
         if (final.Contains("login.html", StringComparison.OrdinalIgnoreCase) || status >= 400)
         {
             // The printer says why with a code. With no code, it never judged the ID and PIN at all.
@@ -112,7 +112,7 @@ public sealed partial class CanonRemoteUi : IDisposable
     /// <summary>Exports the address book as an encrypted configuration file, protected with the given password.</summary>
     public async Task<byte[]> ExportAddressBookAsync(string filePassword, string? addressBookPin, CancellationToken ct)
     {
-        var (_, page, _) = await GetAsync("/m_import_dev_mng_export.html", ct);
+        var (_, page) = await GetAsync("/m_import_dev_mng_export.html", ct);
         var fields = new List<(string, string)>
         {
             ("iToken", Token(page, "Export")),
@@ -130,8 +130,8 @@ public sealed partial class CanonRemoteUi : IDisposable
             "POST /cgi/m_import_dev_mng_export.cgi (address book, with a file password)", ct);
 
         // The printer answers with an "Exporting..." page holding a small form, which the browser sends
-        // after a moment. The answer to that form is the file, or the same page again while the printer
-        // is still working. This is what a real MF642C does.
+        // after a moment. The answer to that form is the same page again while the printer is still
+        // working, and then the Export page carrying the address of the file. This is what a real MF642C does.
         for (var attempt = 0; attempt < 60 && file is null; attempt++)
         {
             // When the file is ready the printer shows the Export page again, this time carrying the
@@ -174,7 +174,6 @@ public sealed partial class CanonRemoteUi : IDisposable
         return file ?? throw new CanonException("The printer did not finish preparing the export in time.");
     }
 
-    /// <summary>Loads an encrypted configuration file's address book onto the printer. It replaces the whole address book.</summary>
     /// <summary>How long a load keeps asking while the printer says it is busy, as it does for some minutes after an export.</summary>
     public TimeSpan WaitWhileBusy { get; init; } = TimeSpan.FromMinutes(3);
 
@@ -183,7 +182,7 @@ public sealed partial class CanonRemoteUi : IDisposable
     /// <summary>Called each time a load has to wait.</summary>
     public Action? Waiting { get; init; }
 
-    /// <summary>Loads an address book file. Returns what the printer said at the end.</summary>
+    /// <summary>Loads an encrypted configuration file's address book onto the printer, replacing the whole address book. Returns what the printer said at the end.</summary>
     public async Task<string> ImportAddressBookAsync(byte[] file, string filePassword, string? addressBookPin, CancellationToken ct)
     {
         // The printer refuses a load for some minutes after an export. Ask again until it agrees.
@@ -199,16 +198,14 @@ public sealed partial class CanonRemoteUi : IDisposable
                 Note($"       not yet: waiting {BusyRetryEvery.TotalSeconds:0} seconds and asking again.");
                 Waiting?.Invoke();
                 await Task.Delay(BusyRetryEvery, ct);
-                using (await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct))
-                {
-                }
+                await HeartbeatAsync(ct);
             }
         }
     }
 
     private async Task<string> ImportOnceAsync(byte[] file, string filePassword, string? addressBookPin, CancellationToken ct)
     {
-        var (_, page, _) = await GetAsync("/m_import_dev_mng_import.html", ct);
+        var (_, page) = await GetAsync("/m_import_dev_mng_import.html", ct);
         var fields = new List<(string, string)>
         {
             ("iToken", Token(page, "Import")),
@@ -219,7 +216,7 @@ public sealed partial class CanonRemoteUi : IDisposable
         };
         if (!string.IsNullOrEmpty(addressBookPin)) fields.Add(("i2092", addressBookPin));
 
-        var (status, body, _) = await PostFormAsync("/cgi/m_import_dev_mng_import.cgi", fields, ct, secret: "i2052");
+        var (status, body, _) = await PostFormAsync("/cgi/m_import_dev_mng_import.cgi", fields, ct);
         var start = TryJson(body);
         if (status != 200 || start is null || !start.Value.TryGetProperty("status", out var s) || s.ToString() != "0")
         {
@@ -231,36 +228,12 @@ public sealed partial class CanonRemoteUi : IDisposable
         var uploadUrl = start.Value.TryGetProperty("url", out var u) ? u.GetString() : null;
         if (string.IsNullOrEmpty(uploadUrl)) throw new CanonException("The printer did not say where to send the file.");
 
-        // Sent the way a browser sends it: a plain boundary, and the field and file names in quotes.
-        // .NET's own form writes these differently, and a printer's small web server may not read that.
-        var boundary = "----ScanRelay" + Guid.NewGuid().ToString("N");
-        using var upload = new MultipartFormDataContent(boundary);
-        upload.Headers.Remove("Content-Type");
-        upload.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
-        var part = new ByteArrayContent(file);
-        part.Headers.TryAddWithoutValidation("Content-Disposition", "form-data; name=\"importData\"; filename=\"addressbook.dcm\"");
-        part.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        upload.Add(part);
-
-        string? where = null;
-        using (var sent = await SendAsync(new HttpRequestMessage(HttpMethod.Post, Absolute(uploadUrl)) { Content = upload }, $"POST {uploadUrl} (the file, {file.Length} bytes)", ct))
-        {
-            var answer = await sent.Content.ReadAsStringAsync(ct);
-            Describe(sent, answer);
-            if (!sent.IsSuccessStatusCode) throw new CanonException($"The printer did not accept the file (it answered {(int)sent.StatusCode}).");
-
-            // The answer to the file itself can already be the result, and when it is, it is the one that counts.
-            if (TryJson(answer) is { } told && told.TryGetProperty("redirect", out var r) && r.GetString() is { Length: > 0 } direct) where = direct;
-        }
-
+        var where = await UploadAsync(file, uploadUrl, ct);
         for (var attempt = 0; attempt < 80 && where is null; attempt++)
         {
-            // The page keeps the session awake while the printer works, so this does too.
-            using (var beat = await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct))
-            {
-            }
+            await HeartbeatAsync(ct);
 
-            var (code, result, _) = await GetAsync("/json/dcm_import_result.json", ct);
+            var (code, result) = await GetAsync("/json/dcm_import_result.json", ct);
             if (code == 200 && TryJson(result) is { } json && json.TryGetProperty("redirect", out var done) && done.GetString() is { Length: > 0 } finished) where = finished;
             else await Task.Delay(PollEvery, ct);
         }
@@ -269,7 +242,7 @@ public sealed partial class CanonRemoteUi : IDisposable
 
         // Finished is not the same as worked. Sent back to the Import page means refused; otherwise the result page says which.
         if (where.Contains("m_import_dev_mng_import.html", StringComparison.Ordinal)) throw Refusal(where);
-        var (_, html, _) = await GetAsync(where, ct);
+        var (_, html) = await GetAsync(where, ct);
         var said = Message(html);
         Note("       the printer's last word: " + (said.Length > 0 ? said : "(none found on the page)"));
 
@@ -291,6 +264,36 @@ public sealed partial class CanonRemoteUi : IDisposable
 
     /// <summary>Writes to the record, leaving out the one-time key the printer puts in its file addresses.</summary>
     private void Note(string line) => Trace?.Invoke(Regex.Replace(line, "pass=[0-9A-Fa-f]+", "pass=(left out)"));
+
+    /// <summary>
+    /// Sends the file. The answer to the file itself can already be the result, and when it is, it is
+    /// the one that counts: this returns the address of that result, or null when the printer is still working.
+    /// </summary>
+    private async Task<string?> UploadAsync(byte[] file, string uploadUrl, CancellationToken ct)
+    {
+        // Sent the way a browser sends it: a plain boundary, and the field and file names in quotes.
+        // .NET's own form writes these differently, and a printer's small web server may not read that.
+        var boundary = "----ScanRelay" + Guid.NewGuid().ToString("N");
+        using var upload = new MultipartFormDataContent(boundary);
+        upload.Headers.Remove("Content-Type");
+        upload.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
+        var part = new ByteArrayContent(file);
+        part.Headers.TryAddWithoutValidation("Content-Disposition", "form-data; name=\"importData\"; filename=\"addressbook.dcm\"");
+        part.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        upload.Add(part);
+
+        using (var sent = await SendAsync(new HttpRequestMessage(HttpMethod.Post, Absolute(uploadUrl)) { Content = upload }, $"POST {uploadUrl} (the file, {file.Length} bytes)", ct))
+        {
+            var answer = await sent.Content.ReadAsStringAsync(ct);
+            Describe(sent, answer);
+            if (!sent.IsSuccessStatusCode) throw new CanonException($"The printer did not accept the file (it answered {(int)sent.StatusCode}).");
+
+            // The answer to the file itself can already be the result, and when it is, it is the one that counts.
+            if (TryJson(answer) is { } told && told.TryGetProperty("redirect", out var r) && r.GetString() is { Length: > 0 } direct) return direct;
+        }
+
+        return null;
+    }
 
     /// <summary>A wrong or missing PIN, or nothing selected, will not get better by waiting. Being busy will.</summary>
     private static CanonException Refusal(string address) =>
@@ -347,17 +350,26 @@ public sealed partial class CanonRemoteUi : IDisposable
         return (null, html, final);
     }
 
-    private async Task<(int Status, string Body, string FinalUrl)> GetAsync(string path, CancellationToken ct)
+    private async Task<(int Status, string Body)> GetAsync(string path, CancellationToken ct)
     {
         using var response = await SendAsync(new HttpRequestMessage(HttpMethod.Get, Absolute(path)), "GET " + path, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         Describe(response, body);
-        return ((int)response.StatusCode, body, response.RequestMessage?.RequestUri?.PathAndQuery ?? path);
+        return ((int)response.StatusCode, body);
     }
 
-    private async Task<(int Status, string Body, string FinalUrl)> PostFormAsync(string path, List<(string Name, string Value)> fields, CancellationToken ct, string? secret = null)
+    /// <summary>The Import page keeps the session awake this way while the printer works, so this does too.</summary>
+    private async Task HeartbeatAsync(CancellationToken ct)
     {
-        var shown = string.Join("&", fields.Select(f => f.Name + "=" + (f.Name == secret || f.Name is "i2082" or "i2091" or "i2052" or "i2092" or "i2102" or "i0014" ? "(hidden)" : f.Value)));
+        using var beat = await SendAsync(new HttpRequestMessage(HttpMethod.Post, _base + "/json/heartbeat.json"), null, ct);
+    }
+
+    /// <summary>The sign-in ID and PIN, the file passwords and the address book PINs. Their values are never written down.</summary>
+    private static readonly string[] HiddenFields = ["i0014", "i0016", "i2052", "i2082", "i2091", "i2092", "i2102"];
+
+    private async Task<(int Status, string Body, string FinalUrl)> PostFormAsync(string path, List<(string Name, string Value)> fields, CancellationToken ct)
+    {
+        var shown = string.Join("&", fields.Select(f => f.Name + "=" + (HiddenFields.Contains(f.Name) ? "(hidden)" : f.Value)));
         using var response = await SendAsync(
             new HttpRequestMessage(HttpMethod.Post, _base + path) { Content = new FormUrlEncodedContent(fields.Select(f => KeyValuePair.Create(f.Name, f.Value))) },
             $"POST {path}  {shown}", ct);

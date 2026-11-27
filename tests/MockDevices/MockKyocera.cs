@@ -51,10 +51,7 @@ public sealed class MockKyocera : IAsyncDisposable
 
     public static async Task<MockKyocera> StartAsync()
     {
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var app = builder.Build();
+        var app = MockHost.Create();
         var mock = new MockKyocera(app);
 
         // What an office printer already holds: scan-to-email contacts and an old folder route.
@@ -76,8 +73,7 @@ public sealed class MockKyocera : IAsyncDisposable
                 "application/soap+xml");
         });
 
-        await app.StartAsync();
-        mock.Port = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First()).Port;
+        mock.Port = await MockHost.StartAsync(app);
         return mock;
     }
 

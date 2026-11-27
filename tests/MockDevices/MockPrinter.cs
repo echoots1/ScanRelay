@@ -40,10 +40,7 @@ public sealed class MockPrinter : IAsyncDisposable
 
     public static async Task<MockPrinter> StartAsync(int port = 0)
     {
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
-        var app = builder.Build();
+        var app = MockHost.Create(port);
         var printer = new MockPrinter(app);
         printer.AddressBook[1] = new MockEntry(1, "Fax: Head office", null, "fax", "", "", "", null);
         printer.AddressBook[2] = new MockEntry(2, "Fax: Supplier", null, "fax", "", "", "", null);
@@ -80,8 +77,7 @@ public sealed class MockPrinter : IAsyncDisposable
             return printer.AddressBook.TryRemove(slot, out _) ? Results.NoContent() : Results.NotFound();
         });
 
-        await app.StartAsync();
-        printer.Port = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First()).Port;
+        printer.Port = await MockHost.StartAsync(app);
         return printer;
     }
 

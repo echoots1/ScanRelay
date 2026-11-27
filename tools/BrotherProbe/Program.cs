@@ -1,10 +1,11 @@
+using ScanRelay.ProbeTools;
 using ScanRelay.Modules.BrotherAds;
 
 namespace ScanRelay.BrotherProbe;
 
 /// <summary>
-/// Reads a Brother ADS scanner's scan profiles the way the module will, and writes down what the
-/// scanner answered, so the module can be built on what a real scanner does. It changes nothing.
+/// Tries the Brother module's steps against a real scanner and writes down what it answered.
+/// By itself it only reads. With --add or --remove it saves or clears one profile.
 /// </summary>
 public static class BrotherProbeProgram
 {
@@ -34,11 +35,11 @@ public static class BrotherProbeProgram
             return args.Length == 0 ? 0 : 1;
         }
 
-        string? Option(string name) => Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        string? Option(string name) => ProbeConsole.Option(args, name);
         var folder = Option("--out") ?? ".";
         Directory.CreateDirectory(folder);
         var reportPath = Path.Combine(folder, "brother-probe-report.txt");
-        var password = Environment.GetEnvironmentVariable("BROTHER_PASSWORD") ?? ReadHidden("Web Based Management password: ");
+        var password = Environment.GetEnvironmentVariable("BROTHER_PASSWORD") ?? ProbeConsole.ReadHidden("Web Based Management password: ");
         var (add, folderPath, user, remove) = (Option("--add"), Option("--folder"), Option("--user"), Option("--remove"));
         if (add is not null && (folderPath is null || user is null))
         {
@@ -46,7 +47,7 @@ public static class BrotherProbeProgram
             return 1;
         }
 
-        var sharePassword = add is null ? "" : Environment.GetEnvironmentVariable("BROTHER_SHARE_PASSWORD") ?? ReadHidden("Password of the share account: ");
+        var sharePassword = add is null ? "" : Environment.GetEnvironmentVariable("BROTHER_SHARE_PASSWORD") ?? ProbeConsole.ReadHidden("Password of the share account: ");
 
         await using var report = new StreamWriter(reportPath);
         void Say(string line)
@@ -177,27 +178,5 @@ public static class BrotherProbeProgram
         Say(ok ? "RESULT: worked." : "RESULT: did not work. The report shows how far it got.");
         Console.WriteLine($"Saved as {Path.GetFullPath(reportPath)}. Passwords, PINs and profile names are left out; it does show folder paths and the account name. Read it over before you share it.");
         return ok ? 0 : 1;
-    }
-
-    private static string ReadHidden(string prompt)
-    {
-        Console.Write(prompt);
-        var text = new System.Text.StringBuilder();
-        while (true)
-        {
-            var key = Console.ReadKey(intercept: true);
-            if (key.Key == ConsoleKey.Enter) break;
-            if (key.Key == ConsoleKey.Backspace)
-            {
-                if (text.Length > 0) text.Length--;
-            }
-            else if (!char.IsControl(key.KeyChar))
-            {
-                text.Append(key.KeyChar);
-            }
-        }
-
-        Console.WriteLine();
-        return text.ToString();
     }
 }

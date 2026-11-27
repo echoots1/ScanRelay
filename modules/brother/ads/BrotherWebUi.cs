@@ -27,21 +27,19 @@ public sealed record BrotherSlot(int Index, int Type, string Name)
 /// </summary>
 public sealed partial class BrotherWebUi : IDisposable
 {
-    public const int SlotCount = 25;
-
     private readonly HttpClient _http;
     private readonly string _base;
 
     /// <summary>The values in a profile that must never be written down: passwords and PINs.</summary>
     private static readonly string[] SecretTags = ["FolderPass", "PINCode", "SecPDF_PIN"];
 
-    public BrotherWebUi(string address, bool secure = true, HttpMessageHandler? handler = null)
+    public BrotherWebUi(string address, bool secure = true)
     {
         _base = address.Contains("://", StringComparison.Ordinal) ? address.TrimEnd('/') : $"{(secure ? "https" : "http")}://{address}";
 
         // The scanner presents a certificate it made itself, so it cannot be checked against anything.
         // A cookie jar per connection keeps one scanner's session apart from another's.
-        _http = new HttpClient(handler ?? new HttpClientHandler
+        _http = new HttpClient(new HttpClientHandler
         {
             CookieContainer = new CookieContainer(),
             ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,

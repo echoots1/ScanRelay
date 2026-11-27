@@ -60,14 +60,10 @@ public sealed partial class MockCanon : IAsyncDisposable
 
     public static async Task<MockCanon> StartAsync()
     {
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var app = builder.Build();
+        var app = MockHost.Create();
         var mock = new MockCanon(app);
         app.Run(mock.HandleAsync);
-        await app.StartAsync();
-        mock.Port = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First()).Port;
+        mock.Port = await MockHost.StartAsync(app);
         return mock;
     }
 
@@ -211,11 +207,6 @@ public sealed partial class MockCanon : IAsyncDisposable
                 await context.Response.Body.WriteAsync(BuildExport(_exportPassword));
                 _exportPassword = null;
                 _downloadKey = null;
-                return;
-
-            case "/json/dcm_export_result.json":
-                // Asking here before the file has been fetched is what a first version of the module did. The real printer answers "File error".
-                await Json("{\n\"result\":\"2\",\n\"url\":\"/m_import_dev_mng_e_result.html\",\n\"status\":\"0\"\n}");
                 return;
 
             case "/m_import_dev_mng_e_result.html":

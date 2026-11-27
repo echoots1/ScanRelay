@@ -7,9 +7,9 @@ namespace ScanRelay.Modules.KyoceraEcosys;
 /// <summary>
 /// Keeps a Kyocera ECOSYS address book in step with the list of people.
 ///
-/// What this module owns on the printer: contacts whose folder points into the ScanRelay
-/// share and ends in a person's id, and that have no fax or FTP destination. Nothing else is ever changed or removed, whatever
-/// number it has. New contacts are given numbers from the reserved range only.
+/// What this module owns on the printer: contacts whose folder path ends in a person's id
+/// and that carry no fax, FTP or internet fax destination. Nothing else is ever changed or
+/// removed, whatever number it has. New contacts are given numbers from the reserved range only.
 /// </summary>
 public sealed partial class KyoceraAdapter(ModuleContext context) : IDeviceAdapter
 {

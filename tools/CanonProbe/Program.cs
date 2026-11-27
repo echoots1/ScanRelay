@@ -1,5 +1,5 @@
+using ScanRelay.ProbeTools;
 using System.Security.Cryptography;
-using System.Text.RegularExpressions;
 using ScanRelay.Modules.CanonImageClass;
 
 namespace ScanRelay.CanonProbe;
@@ -8,15 +8,12 @@ namespace ScanRelay.CanonProbe;
 /// Tries the Canon module's steps against a real printer, one deliberate step at a time,
 /// and writes down what the printer answered so the module can be corrected where it guessed.
 /// </summary>
-public static partial class CanonProbeProgram
+public static class CanonProbeProgram
 {
     // Set in Main: the files go in the current folder unless --out names another.
     private static string Report = "canon-probe-report.txt";
     private static string SavedBook = "canon-probe-saved.dcm";
     private static string SavedKey = "canon-probe-saved.key";
-
-    [GeneratedRegex(@"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[\\/]?$")]
-    private static partial Regex OursPattern();
 
     public static async Task<int> Main(string[] args)
     {
@@ -50,7 +47,7 @@ public static partial class CanonProbeProgram
             return args.Length == 0 ? 0 : 1;
         }
 
-        string? Option(string name) => Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        string? Option(string name) => ProbeConsole.Option(args, name);
         var outFolder = Option("--out") ?? ".";
         Directory.CreateDirectory(outFolder);
         (Report, SavedBook, SavedKey) = (Path.Combine(outFolder, "canon-probe-report.txt"), Path.Combine(outFolder, "canon-probe-saved.dcm"), Path.Combine(outFolder, "canon-probe-saved.key"));
@@ -61,7 +58,7 @@ public static partial class CanonProbeProgram
             return 1;
         }
 
-        var pin = Environment.GetEnvironmentVariable("CANON_PIN") ?? ReadHidden("System Manager PIN: ");
+        var pin = Environment.GetEnvironmentVariable("CANON_PIN") ?? ProbeConsole.ReadHidden("System Manager PIN: ");
         var template = Option("--template") ?? "ScanRelay";
         var (add, folder) = (Option("--add"), Option("--folder"));
         var (save, restore) = (args.Contains("--save"), args.Contains("--restore"));
@@ -172,39 +169,17 @@ public static partial class CanonProbeProgram
         return ok ? 0 : 1;
     }
 
-    private static string Cut(string name) => name.Length > CanonBook.MaxNameLength ? name[..CanonBook.MaxNameLength] : name;
+    private static string Cut(string name) => CanonAdapter.Cut(name);
 
     private static void Describe(CanonBook book, string template, Action<string> say)
     {
         var folders = book.Entries.Where(e => e.IsFolder).ToList();
-        var ours = folders.Where(e => OursPattern().IsMatch(e.Path)).ToList();
+        var ours = folders.Where(e => CanonAdapter.KeyOf(e) is not null).ToList();
         say($"Address book: {book.Entries.Count} entries, {folders.Count} of them shared folders, {ours.Count} of those in ScanRelay's form.");
         say($"Template entry \"{template}\": {(folders.Any(e => e.Name.Equals(template, StringComparison.OrdinalIgnoreCase)) ? "found" : "not found")}.");
         foreach (var e in folders.Where(e => e.Name.StartsWith("ScanRelay", StringComparison.OrdinalIgnoreCase)))
         {
             say($"  {e.Get("indexId"),3}  {e.Name}  ->  \\\\{e.Host}\\{e.Path}  as {e.UserName}  (password {(e.EncryptedPassword.Length > 0 ? "set" : "not set")})");
         }
-    }
-
-    private static string ReadHidden(string prompt)
-    {
-        Console.Write(prompt);
-        var text = new System.Text.StringBuilder();
-        while (true)
-        {
-            var key = Console.ReadKey(intercept: true);
-            if (key.Key == ConsoleKey.Enter) break;
-            if (key.Key == ConsoleKey.Backspace)
-            {
-                if (text.Length > 0) text.Length--;
-            }
-            else if (!char.IsControl(key.KeyChar))
-            {
-                text.Append(key.KeyChar);
-            }
-        }
-
-        Console.WriteLine();
-        return text.ToString();
     }
 }
